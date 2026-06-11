@@ -696,9 +696,31 @@ export default function App() {
       {/* -------------------- ROLE SWITCHER NAVBAR -------------------- */}
       <nav className="role-switcher-nav">
         <div className="role-switcher-nav-left">
-          <div className="role-switcher-title">
-            <span className="logo-badge">REC</span>
-            <span className="logo-text">Event Platform MVP</span>
+          <div className="role-switcher-title" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <svg viewBox="0 0 100 100" width="34" height="34" fill="currentColor" style={{ color: 'hsl(var(--primary))' }}>
+              {/* Connected circles diamond logo form from page 31/32 */}
+              <circle cx="15" cy="50" r="8" />
+              <circle cx="35" cy="30" r="8" />
+              <circle cx="35" cy="70" r="8" />
+              
+              {/* Merged center columns */}
+              <rect x="47" y="22" width="16" height="36" rx="8" />
+              <rect x="47" y="42" width="16" height="36" rx="8" />
+              
+              {/* Merged right column */}
+              <rect x="67" y="32" width="16" height="36" rx="8" />
+              
+              {/* Rightmost circle */}
+              <circle cx="91" cy="50" r="8" />
+            </svg>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '24px', fontWeight: '900', letterSpacing: '0.02em', color: '#fff', fontFamily: 'var(--font-sans)' }}>REC</span>
+              <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)' }}></div>
+              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.1', fontFamily: 'var(--font-sans)' }}>
+                <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'hsl(var(--primary))', fontWeight: '900' }}>Recruitment & Employment</span>
+                <span style={{ fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#fff', opacity: '0.8', fontWeight: '700' }}>Confederation</span>
+              </div>
+            </div>
           </div>
         </div>
         <div className="role-buttons">

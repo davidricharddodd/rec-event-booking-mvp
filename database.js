@@ -181,11 +181,18 @@ async function initDatabase() {
   const categoryCount = await query.get('SELECT COUNT(*) as count FROM categories');
   if (categoryCount.count === 0) {
     console.log('Seeding categories...');
-    await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('Conference', 'conference', '#8b5cf6', 'events')");
-    await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('Webinar', 'webinar', '#3b82f6', 'events')");
-    await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('Legal Helpline Q&A', 'legal-qa', '#f97316', 'events')");
-    await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('CPD Workshop', 'cpd-workshop', '#10b981', 'training')");
-    await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('Qualification', 'qualification', '#6366f1', 'qualifications')");
+    await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('Conference', 'conference', '#8C66D4', 'events')");
+    await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('Webinar', 'webinar', '#36BEAE', 'events')");
+    await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('Legal Helpline Q&A', 'legal-qa', '#FFC03E', 'events')");
+    await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('CPD Workshop', 'cpd-workshop', '#FF68A7', 'training')");
+    await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('Qualification', 'qualification', '#FF595D', 'qualifications')");
+  } else {
+    // Ensure existing categories use the correct brand guide hex colors
+    await query.run("UPDATE categories SET color_hex = '#8C66D4' WHERE slug = 'conference'");
+    await query.run("UPDATE categories SET color_hex = '#36BEAE' WHERE slug = 'webinar'");
+    await query.run("UPDATE categories SET color_hex = '#FFC03E' WHERE slug = 'legal-qa'");
+    await query.run("UPDATE categories SET color_hex = '#FF68A7' WHERE slug = 'cpd-workshop'");
+    await query.run("UPDATE categories SET color_hex = '#FF595D' WHERE slug = 'qualification'");
   }
 
   // Seed discount codes
