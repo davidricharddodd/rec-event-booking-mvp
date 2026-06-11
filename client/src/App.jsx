@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 // Use empty string prefix in production (served from same port) or http://localhost:5000 in dev
-const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+const API_BASE = window.location.hostname === 'localhost' ? (window.location.port === '5173' ? 'http://localhost:5000' : '') : '';
 
 export default function App() {
   // Navigation
@@ -624,6 +624,7 @@ export default function App() {
     } catch (err) {
       console.error('Email send failed:', err);
     }
+  };
   // Create and Publish Event
   const handleCreateEventSubmit = async (e) => {
     e.preventDefault();
@@ -1960,5 +1961,4 @@ export default function App() {
       )}
     </div>
   );
-}
 }
