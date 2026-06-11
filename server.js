@@ -104,6 +104,12 @@ app.get('/api/events', async (req, res) => {
         'SELECT * FROM event_dates WHERE event_id = ? ORDER BY start_datetime ASC',
         [event.id]
       );
+      for (const date of event.dates) {
+        date.registration_types = await query.all(
+          'SELECT * FROM registration_types WHERE event_date_id = ? ORDER BY price_pence ASC',
+          [date.id]
+        );
+      }
     }
 
     res.json(events);
@@ -522,6 +528,14 @@ app.get('/api/admin/dashboard/summary', async (req, res) => {
       GROUP BY e.id
       ORDER BY next_start ASC
     `);
+
+    // For each event, fetch dates details
+    for (const event of events) {
+      event.dates = await query.all(
+        'SELECT * FROM event_dates WHERE event_id = ? ORDER BY start_datetime ASC',
+        [event.id]
+      );
+    }
 
     // Needs attention panel (Events at < 50% capacity starting within 14 days)
     const needsAttention = await query.all(`
