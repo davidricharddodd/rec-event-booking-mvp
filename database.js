@@ -154,6 +154,27 @@ async function initDatabase() {
       payload TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      event_type TEXT NOT NULL CHECK(event_type IN ('standalone', 'umbrella')),
+      category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+      default_title TEXT,
+      default_description TEXT,
+      config_json TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS discount_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT UNIQUE NOT NULL,
+      discount_type TEXT NOT NULL CHECK(discount_type IN ('percent', 'fixed')),
+      value INTEGER NOT NULL,
+      max_uses INTEGER,
+      uses_count INTEGER DEFAULT 0,
+      expires_at TEXT
+    );
   `);
 
   // Check if categories are already seeded
@@ -165,6 +186,43 @@ async function initDatabase() {
     await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('Legal Helpline Q&A', 'legal-qa', '#f97316', 'events')");
     await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('CPD Workshop', 'cpd-workshop', '#10b981', 'training')");
     await query.run("INSERT INTO categories (name, slug, color_hex, website_section) VALUES ('Qualification', 'qualification', '#6366f1', 'qualifications')");
+  }
+
+  // Seed discount codes
+  const codeCount = await query.get('SELECT COUNT(*) as count FROM discount_codes');
+  if (codeCount.count === 0) {
+    console.log('Seeding discount codes...');
+    await query.run("INSERT INTO discount_codes (code, discount_type, value, max_uses, expires_at) VALUES ('REC20', 'percent', 20, 100, '2026-12-31')");
+    await query.run("INSERT INTO discount_codes (code, discount_type, value, max_uses, expires_at) VALUES ('MEMBER50', 'percent', 50, 50, '2026-12-31')");
+    await query.run("INSERT INTO discount_codes (code, discount_type, value, max_uses, expires_at) VALUES ('FREEPASS', 'percent', 100, 10, '2026-12-31')");
+  }
+
+  // Seed templates
+  const templateCount = await query.get('SELECT COUNT(*) as count FROM templates');
+  if (templateCount.count === 0) {
+    console.log('Seeding templates...');
+    await query.run(`
+      INSERT INTO templates (name, event_type, category_id, default_title, default_description, config_json)
+      VALUES (
+        'Standard Conference Template', 
+        'standalone', 
+        1, 
+        'REC Conference', 
+        'Default description for conferences', 
+        '{"registration_types":[{"name":"Member Rate","price_pence":25000,"capacity":100,"is_member_only":1},{"name":"Non-Member Rate","price_pence":45000,"capacity":50,"is_member_only":0}]}'
+      )
+    `);
+    await query.run(`
+      INSERT INTO templates (name, event_type, category_id, default_title, default_description, config_json)
+      VALUES (
+        'Standard CPD Workshop Template', 
+        'standalone', 
+        4, 
+        'CPD Workshop Series', 
+        'Default description for CPD workshops', 
+        '{"registration_types":[{"name":"Member Ticket","price_pence":9500,"capacity":30,"is_member_only":1},{"name":"Non-Member Ticket","price_pence":15000,"capacity":10,"is_member_only":0}]}'
+      )
+    `);
   }
 
   // Check if events are already seeded

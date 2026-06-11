@@ -73,6 +73,27 @@ export default function App() {
   const [emails, setEmails] = useState([]);
   const [viewingEmail, setViewingEmail] = useState(null);
 
+  // Expanded MVP States
+  const [adminRole, setAdminRole] = useState('super_admin'); // super_admin, manager, viewer, readonly
+  const [templates, setTemplates] = useState([]);
+  const [discountCodeInput, setDiscountCodeInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [promoError, setPromoError] = useState('');
+  const [isStaffOnline, setIsStaffOnline] = useState(true);
+  const [staffOfflineQueue, setStaffOfflineQueue] = useState([]);
+
+  // Create Event Form States
+  const [showEventCreator, setShowEventCreator] = useState(false);
+  const [creatorTitle, setCreatorTitle] = useState('');
+  const [creatorDesc, setCreatorDesc] = useState('');
+  const [creatorCategoryId, setCreatorCategoryId] = useState('1');
+  const [creatorType, setCreatorType] = useState('standalone');
+  const [creatorStart, setCreatorStart] = useState('');
+  const [creatorEnd, setCreatorEnd] = useState('');
+  const [creatorLocation, setCreatorLocation] = useState('');
+  const [creatorCapacity, setCreatorCapacity] = useState(100);
+  const [creatorTickets, setCreatorTickets] = useState([]);
+
   // Sync basket to local storage
   useEffect(() => {
     localStorage.setItem('rec_basket', JSON.stringify(basket));
@@ -219,6 +240,111 @@ export default function App() {
     }
   };
 
+  const fetchTemplates = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/templates`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      const data = await res.json();
+      setTemplates(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Error loading templates:', err);
+      setTemplates([]);
+    }
+  };
+
+  const handleApplyPromo = async (e) => {
+    e.preventDefault();
+    if (!discountCodeInput) return;
+    setPromoError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/discount/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: discountCodeInput })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPromoError(data.error);
+        setAppliedPromo(null);
+      } else {
+        setAppliedPromo(data);
+      }
+    } catch (err) {
+      setPromoError('Connection error validating promotional code.');
+    }
+  };
+
+  const handlePromoteWaitlist = async (bookingId) => {
+    if (adminRole === 'readonly') {
+      alert('Action disabled in Read-Only mode.');
+      return;
+    }
+    if (!confirm('Promote this delegate from the waitlist? This will confirm their booking.')) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/bookings/${bookingId}/promote`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Delegate promoted successfully!');
+        fetchAdminAttendees(selectedAdminDateId);
+        fetchAdminSummary();
+      } else {
+        alert(data.error || 'Failed to promote delegate.');
+      }
+    } catch (err) {
+      console.error('Promotion error:', err);
+    }
+  };
+
+  const handleGDPRVerifyErase = async (delegateId) => {
+    if (adminRole === 'readonly') {
+      alert('Action disabled in Read-Only mode.');
+      return;
+    }
+    if (adminRole !== 'super_admin') {
+      alert('GDPR Right to Erasure requires the Super Admin role.');
+      return;
+    }
+    if (!confirm('WARNING: Are you sure you want to permanently anonymise this delegate under GDPR Article 17? This action cannot be undone.')) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/delegates/${delegateId}/erase`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        alert('GDPR Erasure completed successfully.');
+        fetchAdminAttendees(selectedAdminDateId);
+        fetchAdminSummary();
+      } else {
+        alert(data.error || 'Failed to execute GDPR erasure.');
+      }
+    } catch (err) {
+      console.error('GDPR Erasure error:', err);
+    }
+  };
+
+  const handleDownloadFinanceCSV = () => {
+    window.open(`${API_BASE}/api/admin/reports/finance-csv`, '_blank');
+  };
+
+  const handleSyncOfflineQueue = async () => {
+    if (staffOfflineQueue.length === 0) return;
+    try {
+      let successCount = 0;
+      for (const item of staffOfflineQueue) {
+        const res = await fetch(`${API_BASE}/api/app/checkin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ booking_reference: item.booking_reference, checked_in: item.checked_in })
+        });
+        if (res.ok) successCount++;
+      }
+      alert(`Offline sync complete! ${successCount} check-in updates pushed to Dynamics 365 CRM.`);
+      setStaffOfflineQueue([]);
+      fetchStaffAttendees(selectedStaffDateId);
+    } catch (err) {
+      console.error('Sync failed:', err);
+      alert('Sync failed due to connection issues.');
+    }
+  };
+
   // Perform Dynamics CRM Member Lookup
   const handleEmailBlur = async () => {
     if (!delegateEmail || !delegateEmail.includes('@')) return;
@@ -255,7 +381,8 @@ export default function App() {
       date_string: new Date(date.start_datetime).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
       registration_type_id: ticketType.id,
       ticket_name: ticketType.name,
-      price_pence: ticketType.price_pence
+      price_pence: ticketType.price_pence,
+      waitlist: ticketType.waitlist || false
     };
 
     setBasket([...basket, item]);
@@ -292,7 +419,8 @@ export default function App() {
             member_status: memberStatus,
             dynamics_contact_id: dynamicsContactId
           },
-          basketItems: basket
+          basketItems: basket,
+          discountCode: appliedPromo?.code || null
         })
       });
 
@@ -306,7 +434,7 @@ export default function App() {
       setCheckoutData(data);
       setShowBasketDrawer(false);
       
-      // If free checkout (£0), confirm immediately without showing payment gateway
+      // If free checkout (£0) (either free ticket, promo code discount, or waitlist), confirm immediately
       if (data.total_amount_pence === 0) {
         confirmPayment(data);
       } else {
@@ -346,6 +474,8 @@ export default function App() {
         setDelegateAccess('');
         setMemberStatus('none');
         setDynamicsContactId(null);
+        setAppliedPromo(null);
+        setDiscountCodeInput('');
         
         // Refresh general listings
         fetchEvents();
@@ -382,6 +512,23 @@ export default function App() {
 
   // Toggle staff app attendance checkin
   const toggleStaffAttendance = async (bookingRef, checkedInState) => {
+    const checkedInValue = checkedInState ? 1 : 0;
+    if (!isStaffOnline) {
+      // Offline mode: update state local UI optimistically
+      setStaffAttendees(prev => prev.map(a => a.reference === bookingRef ? { ...a, checked_in: checkedInValue } : a));
+      // Add or update queue (if already queued, update it; otherwise append)
+      setStaffOfflineQueue(prev => {
+        const existingIdx = prev.findIndex(item => item.booking_reference === bookingRef);
+        if (existingIdx >= 0) {
+          const next = [...prev];
+          next[existingIdx] = { booking_reference: bookingRef, checked_in: checkedInValue };
+          return next;
+        }
+        return [...prev, { booking_reference: bookingRef, checked_in: checkedInValue }];
+      });
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/app/checkin`, {
         method: 'POST',
@@ -400,6 +547,34 @@ export default function App() {
   const handleScanQR = async (e) => {
     e.preventDefault();
     if (!scanInputRef) return;
+
+    if (!isStaffOnline) {
+      // Simulate offline scan lookups
+      const attendee = staffAttendees.find(a => a.reference === scanInputRef);
+      if (!attendee) {
+        setScanResult({ success: false, message: `Scan Refused: Reference "${scanInputRef}" not found in cached local roster.` });
+        return;
+      }
+      if (attendee.checked_in === 1) {
+        setScanResult({ success: false, message: `Warning: ${attendee.first_name} ${attendee.last_name} is already checked in.` });
+        return;
+      }
+      
+      // Mark checked in locally
+      setStaffAttendees(prev => prev.map(a => a.reference === scanInputRef ? { ...a, checked_in: 1 } : a));
+      setStaffOfflineQueue(prev => {
+        const existingIdx = prev.findIndex(item => item.booking_reference === scanInputRef);
+        if (existingIdx >= 0) {
+          const next = [...prev];
+          next[existingIdx] = { booking_reference: scanInputRef, checked_in: 1 };
+          return next;
+        }
+        return [...prev, { booking_reference: scanInputRef, checked_in: 1 }];
+      });
+      setScanResult({ success: true, message: `Success (Offline cached)! ${attendee.first_name} ${attendee.last_name} checked in successfully.` });
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/app/checkin/qr`, {
         method: 'POST',
@@ -448,6 +623,70 @@ export default function App() {
       }
     } catch (err) {
       console.error('Email send failed:', err);
+    }
+  // Create and Publish Event
+  const handleCreateEventSubmit = async (e) => {
+    e.preventDefault();
+    if (adminRole === 'readonly') {
+      alert('Action disabled in Read-Only mode.');
+      return;
+    }
+    if (!creatorStart || !creatorEnd) {
+      alert('Start and End dates are required.');
+      return;
+    }
+
+    const eventData = {
+      title: creatorTitle,
+      description: creatorDesc,
+      category_id: parseInt(creatorCategoryId, 10) || 1,
+      type: creatorType,
+      status: 'published',
+      dates: [
+        {
+          start_datetime: creatorStart,
+          end_datetime: creatorEnd,
+          location: creatorLocation,
+          capacity: parseInt(creatorCapacity, 10) || 100,
+          registration_types: (creatorTickets || []).map(t => ({
+            name: t.name,
+            price_pence: parseInt(t.price_pence, 10) || 0,
+            capacity: parseInt(t.capacity, 10) || parseInt(creatorCapacity, 10) || 100,
+            is_member_only: t.is_member_only || 0
+          }))
+        }
+      ]
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/api/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Event created and published successfully!');
+        setShowEventCreator(false);
+        // Reset form
+        setCreatorTitle('');
+        setCreatorDesc('');
+        setCreatorCategoryId('1');
+        setCreatorType('standalone');
+        setCreatorStart('');
+        setCreatorEnd('');
+        setCreatorLocation('');
+        setCreatorCapacity(100);
+        setCreatorTickets([]);
+        // Refresh listings
+        fetchEvents();
+        fetchAdminSummary();
+      } else {
+        alert(data.error || 'Failed to create event.');
+      }
+    } catch (err) {
+      console.error('Error creating event:', err);
+      alert('Error creating event.');
     }
   };
 
@@ -576,18 +815,21 @@ export default function App() {
                           return (
                             <div 
                               key={t.id}
-                              onClick={() => !isSoldOut && setSelectedTicketId(t.id.toString())}
+                              onClick={() => setSelectedTicketId(t.id.toString())}
                               style={{ 
                                 padding: '16px', 
                                 border: '1px solid',
-                                borderColor: selectedTicketId === t.id.toString() ? 'hsl(var(--primary))' : 'hsl(var(--border-glass))',
-                                background: selectedTicketId === t.id.toString() ? 'var(--primary-glow)' : 'rgba(2, 6, 23, 0.3)',
+                                borderColor: selectedTicketId === t.id.toString() 
+                                  ? (isSoldOut ? 'hsl(var(--success))' : 'hsl(var(--primary))') 
+                                  : 'hsl(var(--border-glass))',
+                                background: selectedTicketId === t.id.toString() 
+                                  ? (isSoldOut ? 'rgba(16, 185, 129, 0.15)' : 'var(--primary-glow)') 
+                                  : 'rgba(2, 6, 23, 0.3)',
                                 borderRadius: '12px',
-                                cursor: isSoldOut ? 'not-allowed' : 'pointer',
+                                cursor: 'pointer',
                                 display: 'flex',
                                 justifyContent: 'space-between',
-                                alignItems: 'center',
-                                opacity: isSoldOut ? 0.5 : 1
+                                alignItems: 'center'
                               }}
                             >
                               <div>
@@ -596,9 +838,12 @@ export default function App() {
                                   {t.is_member_only === 1 && (
                                     <span style={{ fontSize: '10px', background: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>Member Only</span>
                                   )}
+                                  {isSoldOut && (
+                                    <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.2)', color: '#6ee7b7', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>Waitlist</span>
+                                  )}
                                 </div>
                                 <div style={{ fontSize: '12px', color: 'hsl(var(--text-muted))', marginTop: '2px' }}>
-                                  {isSoldOut ? 'Sold Out' : `${t.capacity - t.sold_count} seats remaining`}
+                                  {isSoldOut ? 'Capacity Full — Waitlist Active' : `${t.capacity - t.sold_count} seats remaining`}
                                 </div>
                               </div>
                               <div style={{ fontSize: '18px', fontWeight: '800' }}>
@@ -610,20 +855,29 @@ export default function App() {
                       </div>
                     </div>
                   )}
-
-                  {selectedTicketId && (
-                    <button 
-                      className="btn btn-primary" 
-                      onClick={() => {
-                        const date = selectedEvent.dates.find(d => d.id === parseInt(selectedDateId));
-                        const ticket = date.registration_types.find(t => t.id === parseInt(selectedTicketId));
-                        addToBasket(selectedEvent, date, ticket);
-                      }}
-                      style={{ width: '100%', marginTop: '24px', padding: '14px' }}
-                    >
-                      Add Ticket to Basket
-                    </button>
-                  )}
+ 
+                  {selectedTicketId && (() => {
+                    const date = selectedEvent.dates?.find(d => d.id === parseInt(selectedDateId));
+                    const ticket = date?.registration_types?.find(t => t.id === parseInt(selectedTicketId));
+                    const isWaitlist = ticket ? ticket.sold_count >= ticket.capacity : false;
+                    return (
+                      <button 
+                        className="btn btn-primary" 
+                        onClick={() => {
+                          addToBasket(selectedEvent, date, { ...ticket, waitlist: isWaitlist });
+                        }}
+                        style={{ 
+                          width: '100%', 
+                          marginTop: '24px', 
+                          padding: '14px', 
+                          background: isWaitlist ? 'hsl(var(--success))' : 'hsl(var(--primary))',
+                          borderColor: isWaitlist ? 'hsl(var(--success))' : 'hsl(var(--primary))'
+                        }}
+                      >
+                        {isWaitlist ? 'Join Event Waitlist' : 'Add Ticket to Basket'}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -696,14 +950,60 @@ export default function App() {
                       <div style={{ fontWeight: '700', paddingRight: '20px' }}>{item.event_title}</div>
                       <div style={{ fontSize: '12px', color: 'hsl(var(--text-secondary))', marginTop: '4px' }}>Date: {item.date_string}</div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
-                        <span style={{ fontSize: '12px', color: 'hsl(var(--primary))', fontWeight: 'bold' }}>{item.ticket_name}</span>
-                        <span style={{ fontWeight: '800' }}>{item.price_pence === 0 ? 'FREE' : `£${(item.price_pence / 100).toFixed(2)}`}</span>
+                        <span style={{ fontSize: '12px', color: item.waitlist ? 'hsl(var(--success))' : 'hsl(var(--primary))', fontWeight: 'bold' }}>
+                          {item.ticket_name} {item.waitlist && '(Waitlist)'}
+                        </span>
+                        <span style={{ fontWeight: '800' }}>
+                          {item.waitlist ? 'FREE (Waitlist)' : (item.price_pence === 0 ? 'FREE' : `£${(item.price_pence / 100).toFixed(2)}`)}
+                        </span>
                       </div>
                     </div>
                   ))}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '16px 0', borderTop: '2px solid hsl(var(--border-glass))', fontSize: '18px', fontWeight: '800' }}>
-                    <span>Total Cost:</span>
-                    <span>£{(basket.reduce((acc, item) => acc + item.price_pence, 0) / 100).toFixed(2)}</span>
+
+                  {/* Promo Code Input */}
+                  <div style={{ borderTop: '1px solid hsl(var(--border-glass))', paddingTop: '16px', marginTop: '16px' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input 
+                        type="text" 
+                        placeholder="Promotional Code (e.g. REC20)" 
+                        className="form-input" 
+                        style={{ flex: 1, padding: '8px 12px', fontSize: '13px' }}
+                        value={discountCodeInput}
+                        onChange={(e) => setDiscountCodeInput(e.target.value)}
+                      />
+                      <button type="button" className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '13px' }} onClick={handleApplyPromo}>Apply</button>
+                    </div>
+                    {appliedPromo && (
+                      <div style={{ color: 'hsl(var(--success))', fontSize: '12px', marginTop: '6px' }}>
+                        ✓ Code Applied: <strong>{appliedPromo.code}</strong> ({appliedPromo.value}% Discount)
+                      </div>
+                    )}
+                    {promoError && (
+                      <div style={{ color: 'hsl(var(--error))', fontSize: '12px', marginTop: '6px' }}>
+                        ✗ {promoError}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '16px 0', borderTop: '2px solid hsl(var(--border-glass))', marginTop: '16px' }}>
+                    {appliedPromo && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'hsl(var(--text-secondary))' }}>
+                        <span>Subtotal:</span>
+                        <span>£{(basket.reduce((acc, item) => acc + (item.waitlist ? 0 : item.price_pence), 0) / 100).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {appliedPromo && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'hsl(var(--success))' }}>
+                        <span>Discount ({appliedPromo.value}%):</span>
+                        <span>-£{((basket.reduce((acc, item) => acc + (item.waitlist ? 0 : item.price_pence), 0) * (appliedPromo.value / 100)) / 100).toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '800' }}>
+                      <span>Total Cost:</span>
+                      <span>
+                        £{((basket.reduce((acc, item) => acc + (item.waitlist ? 0 : item.price_pence), 0) * (appliedPromo ? 1 - appliedPromo.value / 100 : 1)) / 100).toFixed(2)}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -842,22 +1142,54 @@ export default function App() {
       {/* -------------------- ADMIN DASHBOARD -------------------- */}
       {activeRole === 'admin' && (
         <main style={{ flex: 1, padding: '32px 24px', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
             <div>
               <h1>REC Operations Center</h1>
               <p>Manage events, monitor live checkout conversions, check sync status, and pull reports.</p>
             </div>
-            <div className="tab-list" style={{ borderBottom: 'none', marginBottom: 0 }}>
-              <button className={`tab-btn ${adminTab === 'overview' ? 'active' : ''}`} onClick={() => setAdminTab('overview')}>
-                Overview & Events
-              </button>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ fontSize: '13px', color: 'hsl(var(--text-secondary))' }}>Current RBAC Role:</span>
+              <select 
+                className="form-input" 
+                style={{ padding: '6px 12px', fontSize: '13px', width: 'fit-content' }}
+                value={adminRole}
+                onChange={(e) => {
+                  const role = e.target.value;
+                  setAdminRole(role);
+                  if (role === 'viewer') {
+                    setAdminTab('reports');
+                    fetchAdminReports();
+                  } else {
+                    setAdminTab('overview');
+                  }
+                }}
+              >
+                <option value="super_admin">Super Admin</option>
+                <option value="manager">Events Manager</option>
+                <option value="viewer">Reporting Viewer (Read-only Finance)</option>
+                <option value="readonly">Read-Only Viewer</option>
+              </select>
+            </div>
+
+            <div className="tab-list" style={{ borderBottom: 'none', marginBottom: 0, width: '100%', display: 'flex', gap: '8px' }}>
+              {adminRole !== 'viewer' && (
+                <button className={`tab-btn ${adminTab === 'overview' ? 'active' : ''}`} onClick={() => setAdminTab('overview')}>
+                  Overview & Events
+                </button>
+              )}
+              {adminRole !== 'viewer' && (
+                <button className={`tab-btn ${adminTab === 'templates' ? 'active' : ''}`} onClick={() => { setAdminTab('templates'); fetchTemplates(); }}>
+                  Event Creator & Templates
+                </button>
+              )}
               <button className={`tab-btn ${adminTab === 'reports' ? 'active' : ''}`} onClick={() => { setAdminTab('reports'); fetchAdminReports(); }}>
                 Performance Analytics
               </button>
             </div>
           </div>
 
-          {adminTab === 'overview' ? (
+          {adminTab === 'overview' && adminRole !== 'viewer' && (
             <div>
               {/* Metric Statistics Row */}
               {adminSummary && (
@@ -959,49 +1291,201 @@ export default function App() {
                 </table>
               </div>
             </div>
-          ) : (
-            /* Admin Reports Tab */
-            <div className="grid-2">
-              <div className="glass-card">
-                <h3 style={{ marginBottom: '16px' }}>Revenue Contribution by Category</h3>
-                {adminReportData?.revenueByCategory.length === 0 ? (
-                  <p>No paid registrations yet.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {adminReportData?.revenueByCategory?.map((c, idx) => (
-                      <div key={idx}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
-                          <span>{c.category}</span>
-                          <strong>£{(c.revenue_pence / 100).toFixed(2)}</strong>
-                        </div>
-                        <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
-                          <div style={{ width: '100%', height: '100%', background: 'hsl(var(--primary))' }}></div>
-                        </div>
-                      </div>
-                    ))}
+          )}
+
+          {adminTab === 'templates' && adminRole !== 'viewer' && (
+            <div>
+              {showEventCreator ? (
+                /* Event Creator Editor Form */
+                <form onSubmit={handleCreateEventSubmit} className="glass-card" style={{ maxWidth: '800px', margin: '0 auto' }}>
+                  <h2 style={{ marginBottom: '24px' }}>Create and Publish Event</h2>
+                  
+                  <div className="form-group">
+                    <label className="form-label">Event Title *</label>
+                    <input type="text" className="form-input" required value={creatorTitle} onChange={(e) => setCreatorTitle(e.target.value)} disabled={adminRole === 'readonly'} />
                   </div>
-                )}
+
+                  <div className="form-group">
+                    <label className="form-label">Event Description</label>
+                    <textarea className="form-input" style={{ minHeight: '100px' }} value={creatorDesc} onChange={(e) => setCreatorDesc(e.target.value)} disabled={adminRole === 'readonly'} />
+                  </div>
+
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Category *</label>
+                      <select className="form-input" value={creatorCategoryId} onChange={(e) => setCreatorCategoryId(e.target.value)} disabled={adminRole === 'readonly'}>
+                        <option value="1">Conference</option>
+                        <option value="2">Webinar</option>
+                        <option value="3">Legal Helpline Q&A</option>
+                        <option value="4">CPD Workshop</option>
+                        <option value="5">Qualification</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Format Type *</label>
+                      <select className="form-input" value={creatorType} onChange={(e) => setCreatorType(e.target.value)} disabled={adminRole === 'readonly'}>
+                        <option value="standalone">Standalone (Single occurrence)</option>
+                        <option value="umbrella">Umbrella (Series event)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Start Date & Time *</label>
+                      <input type="datetime-local" className="form-input" required value={creatorStart} onChange={(e) => setCreatorStart(e.target.value)} disabled={adminRole === 'readonly'} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">End Date & Time *</label>
+                      <input type="datetime-local" className="form-input" required value={creatorEnd} onChange={(e) => setCreatorEnd(e.target.value)} disabled={adminRole === 'readonly'} />
+                    </div>
+                  </div>
+
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Location / Link *</label>
+                      <input type="text" placeholder="e.g. Virtual (MS Teams) or Address" className="form-input" required value={creatorLocation} onChange={(e) => setCreatorLocation(e.target.value)} disabled={adminRole === 'readonly'} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Default Capacity *</label>
+                      <input type="number" className="form-input" required value={creatorCapacity} onChange={(e) => setCreatorCapacity(e.target.value)} disabled={adminRole === 'readonly'} />
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '24px', borderTop: '1px solid hsl(var(--border-glass))', paddingTop: '24px' }}>
+                    <h4 style={{ marginBottom: '16px' }}>Pre-Configured Tickets (Template Defaults)</h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {creatorTickets.map((t, idx) => (
+                        <div key={idx} style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 16px', borderRadius: '8px', border: '1px solid hsl(var(--border-glass))', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <span style={{ fontWeight: 'bold' }}>{t.name}</span>
+                            {t.is_member_only === 1 && (
+                              <span style={{ fontSize: '10px', background: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', marginLeft: '8px' }}>Member Only</span>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                            <span>Price: <strong>{t.price_pence === 0 ? 'FREE' : `£${(t.price_pence / 100).toFixed(2)}`}</strong></span>
+                            <span>Capacity: <strong>{t.capacity}</strong></span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
+                    <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={adminRole === 'readonly'}>
+                      Publish Live Event
+                    </button>
+                    <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowEventCreator(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* Templates List Card Grid */
+                <div>
+                  <h3 style={{ marginBottom: '16px' }}>Choose a Template to Fast-Track Event Creation</h3>
+                  <p style={{ marginBottom: '24px', color: 'hsl(var(--text-secondary))' }}>Selecting a template snapshots default pricing structures, member eligibility tags, and visibility settings so you can publish in under 5 minutes.</p>
+                  
+                  <div className="grid-3">
+                    {templates.map(t => {
+                      const config = JSON.parse(t.config_json || '{}');
+                      return (
+                        <div key={t.id} className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                            <span className="badge" style={{ background: 'rgba(255,255,255,0.05)', color: 'white' }}>
+                              {t.category_name}
+                            </span>
+                            <span className="badge badge-outline" style={{ color: 'hsl(var(--primary))' }}>
+                              {t.event_type}
+                            </span>
+                          </div>
+                          <h3 style={{ marginBottom: '12px', fontSize: '16px' }}>{t.name}</h3>
+                          <p style={{ fontSize: '13px', color: 'hsl(var(--text-secondary))', marginBottom: '20px', flex: 1 }}>{t.default_description}</p>
+                          
+                          <div style={{ background: 'rgba(2, 6, 23, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid hsl(var(--border-glass))', marginBottom: '20px', fontSize: '12px' }}>
+                            <div style={{ fontWeight: 'bold', marginBottom: '6px', color: 'hsl(var(--text-muted))' }}>Default Tiers:</div>
+                            {config.registration_types?.map((rt, idx) => (
+                              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                                <span>{rt.name}</span>
+                                <strong>{rt.price_pence === 0 ? 'FREE' : `£${(rt.price_pence / 100).toFixed(0)}`}</strong>
+                              </div>
+                            ))}
+                          </div>
+
+                          <button 
+                            className="btn btn-primary" 
+                            style={{ width: '100%', marginTop: 'auto' }}
+                            onClick={() => {
+                              setCreatorTitle(t.default_title);
+                              setCreatorDesc(t.default_description);
+                              setCreatorCategoryId(t.category_id.toString());
+                              setCreatorType(t.event_type);
+                              setCreatorTickets(config.registration_types || []);
+                              setShowEventCreator(true);
+                            }}
+                          >
+                            Use Template
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {adminTab === 'reports' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '24px' }}>
+                <button className="btn btn-primary" onClick={handleDownloadFinanceCSV}>
+                  📥 Export Daily Finance Report (CSV)
+                </button>
               </div>
 
-              <div className="glass-card">
-                <h3 style={{ marginBottom: '16px' }}>Audit Attendance & Check-in Rates</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {adminReportData?.attendanceStats?.map((e, idx) => {
-                    const attendedRate = e.sold_count > 0 ? (e.checked_in / e.sold_count) * 100 : 0;
-                    return (
-                      <div key={idx} style={{ paddingBottom: '12px', borderBottom: idx < adminReportData.attendanceStats.length - 1 ? '1px solid hsl(var(--border-glass))' : 'none' }}>
-                        <div style={{ fontWeight: '700', fontSize: '14px' }}>{e.title}</div>
-                        <div style={{ fontSize: '12px', color: 'hsl(var(--text-secondary))', marginTop: '2px' }}>
-                          Date: {new Date(e.start_datetime).toLocaleDateString()}
+              <div className="grid-2">
+                <div className="glass-card">
+                  <h3 style={{ marginBottom: '16px' }}>Revenue Contribution by Category</h3>
+                  {adminReportData?.revenueByCategory.length === 0 ? (
+                    <p>No paid registrations yet.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {adminReportData?.revenueByCategory?.map((c, idx) => (
+                        <div key={idx}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                            <span>{c.category}</span>
+                            <strong>£{(c.revenue_pence / 100).toFixed(2)}</strong>
+                          </div>
+                          <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div style={{ width: '100%', height: '100%', background: 'hsl(var(--primary))' }}></div>
+                          </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '20px', marginTop: '8px' }}>
-                          <div style={{ fontSize: '13px' }}>✅ Checked-in: <strong>{e.checked_in}</strong></div>
-                          <div style={{ fontSize: '13px' }}>⏳ No-Shows: <strong>{e.no_show}</strong></div>
-                          <div style={{ fontSize: '13px', color: 'hsl(var(--primary))' }}>Check-in Rate: <strong>{attendedRate.toFixed(0)}%</strong></div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="glass-card">
+                  <h3 style={{ marginBottom: '16px' }}>Audit Attendance & Check-in Rates</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {adminReportData?.attendanceStats?.map((e, idx) => {
+                      const attendedRate = e.sold_count > 0 ? (e.checked_in / e.sold_count) * 100 : 0;
+                      return (
+                        <div key={idx} style={{ paddingBottom: '12px', borderBottom: idx < adminReportData.attendanceStats.length - 1 ? '1px solid hsl(var(--border-glass))' : 'none' }}>
+                          <div style={{ fontWeight: '700', fontSize: '14px' }}>{e.title}</div>
+                          <div style={{ fontSize: '12px', color: 'hsl(var(--text-secondary))', marginTop: '2px' }}>
+                            Date: {new Date(e.start_datetime).toLocaleDateString()}
+                          </div>
+                          <div style={{ display: 'flex', gap: '20px', marginTop: '8px' }}>
+                            <div style={{ fontSize: '13px' }}>✅ Checked-in: <strong>{e.checked_in}</strong></div>
+                            <div style={{ fontSize: '13px' }}>⏳ No-Shows: <strong>{e.no_show}</strong></div>
+                            <div style={{ fontSize: '13px', color: 'hsl(var(--primary))' }}>Check-in Rate: <strong>{attendedRate.toFixed(0)}%</strong></div>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1037,28 +1521,56 @@ export default function App() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
                         <div style={{ fontWeight: '700', fontSize: '16px' }}>{a.first_name} {a.last_name}</div>
-                        <div style={{ fontSize: '12px', color: 'hsl(var(--text-secondary))', marginTop: '2px' }}>{a.organisation} | {a.email}</div>
+                        <div style={{ fontSize: '12px', color: 'hsl(var(--text-secondary))', marginTop: '2px' }}>{a.organisation || 'N/A'} | {a.email}</div>
                         <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
                           <span className="badge badge-outline" style={{ color: 'hsl(var(--primary))', fontSize: '10px' }}>{a.ticket_name}</span>
                           <span className="badge" style={{ backgroundColor: a.checked_in === 1 ? 'hsl(var(--success))' : 'rgba(255,255,255,0.05)', color: 'white', fontSize: '10px' }}>
                             {a.checked_in === 1 ? 'Checked In' : 'Not Present'}
                           </span>
+                          {a.booking_status === 'waitlisted' && (
+                            <span className="badge" style={{ backgroundColor: 'hsl(var(--warning))', color: 'black', fontSize: '10px', fontWeight: 'bold' }}>Waitlisted</span>
+                          )}
+                          {a.booking_status === 'cancelled' && (
+                            <span className="badge" style={{ backgroundColor: 'hsl(var(--error))', color: 'white', fontSize: '10px' }}>Cancelled</span>
+                          )}
                           {a.crm_synced && (
                             <span style={{ fontSize: '10px', background: 'rgba(59, 130, 246, 0.2)', color: '#93c5fd', padding: '2px 6px', borderRadius: '4px' }}>CRM Synced</span>
                           )}
                         </div>
                       </div>
                       
-                      {a.booking_status !== 'cancelled' && (
-                        <button 
-                          className="btn btn-danger"
-                          style={{ padding: '6px 12px', fontSize: '11px' }}
-                          disabled={refundingId === a.booking_id}
-                          onClick={() => handleRefund(a.booking_id)}
-                        >
-                          {refundingId === a.booking_id ? 'Refunding...' : 'Refund & Cancel'}
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {a.booking_status === 'waitlisted' && (adminRole === 'super_admin' || adminRole === 'manager') && (
+                          <button 
+                            className="btn btn-success"
+                            style={{ padding: '6px 12px', fontSize: '11px' }}
+                            onClick={() => handlePromoteWaitlist(a.booking_id)}
+                          >
+                            Promote
+                          </button>
+                        )}
+                        
+                        {a.booking_status !== 'cancelled' && a.booking_status !== 'waitlisted' && (adminRole === 'super_admin' || adminRole === 'manager') && (
+                          <button 
+                            className="btn btn-danger"
+                            style={{ padding: '6px 12px', fontSize: '11px' }}
+                            disabled={refundingId === a.booking_id}
+                            onClick={() => handleRefund(a.booking_id)}
+                          >
+                            {refundingId === a.booking_id ? 'Refunding...' : 'Refund & Cancel'}
+                          </button>
+                        )}
+
+                        {adminRole === 'super_admin' && a.first_name !== '[ANONYMIZED_GDPR]' && (
+                          <button 
+                            className="btn btn-secondary"
+                            style={{ padding: '6px 12px', fontSize: '11px', borderColor: 'hsl(var(--error))', color: 'hsl(var(--error))' }}
+                            onClick={() => handleGDPRVerifyErase(a.delegate_id)}
+                          >
+                            GDPR Erase
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {(a.dietary_requirements || a.accessibility_needs) && (
@@ -1084,6 +1596,39 @@ export default function App() {
               <div style={{ textAlign: 'center', marginBottom: '20px', borderBottom: '1px solid hsl(var(--border-glass))', paddingBottom: '12px' }}>
                 <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'hsl(var(--primary))', fontWeight: 'bold' }}>REC Staff Check-in</div>
                 <div style={{ fontSize: '16px', fontWeight: '800', color: 'white', marginTop: '2px' }}>Arrivals Portal</div>
+                
+                {/* Network Online/Offline Simulator Switch */}
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '8px', fontSize: '12px' }}>
+                  <span style={{ color: isStaffOnline ? 'hsl(var(--success))' : 'hsl(var(--text-muted))', fontWeight: 'bold' }}>
+                    {isStaffOnline ? '● Online (Dynamics Sync)' : '○ Offline Mode'}
+                  </span>
+                  <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '34px', height: '20px' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={isStaffOnline} 
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setIsStaffOnline(val);
+                        if (val) {
+                          // When toggling online, fetch latest updates
+                          fetchStaffEvents();
+                          if (selectedStaffDateId) fetchStaffAttendees(selectedStaffDateId);
+                        }
+                      }}
+                      style={{ opacity: 0, width: 0, height: 0 }}
+                    />
+                    <span style={{
+                      position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                      backgroundColor: isStaffOnline ? 'hsl(var(--success))' : '#475569',
+                      transition: '.4s', borderRadius: '20px'
+                    }}>
+                      <span style={{
+                        position: 'absolute', content: '""', height: '14px', width: '14px', left: isStaffOnline ? '17px' : '3px', bottom: '3px',
+                        backgroundColor: 'white', transition: '.4s', borderRadius: '50%'
+                      }}></span>
+                    </span>
+                  </label>
+                </div>
               </div>
 
               {showScanner ? (
@@ -1168,6 +1713,33 @@ export default function App() {
                       📷 Scan
                     </button>
                   </div>
+
+                  {staffOfflineQueue.length > 0 && (
+                    <div style={{
+                      background: 'rgba(245,158,11,0.1)',
+                      border: '1px solid rgba(245,158,11,0.2)',
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      marginBottom: '16px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: '12px'
+                    }}>
+                      <span style={{ color: 'hsl(var(--warning))', fontWeight: 'bold' }}>
+                        ⚠️ {staffOfflineQueue.length} Check-in(s) Cached Offline
+                      </span>
+                      {isStaffOnline && (
+                        <button 
+                          className="btn btn-primary" 
+                          style={{ padding: '4px 8px', fontSize: '11px', background: 'hsl(var(--warning))', borderColor: 'hsl(var(--warning))', color: 'black', fontWeight: 'bold' }}
+                          onClick={handleSyncOfflineQueue}
+                        >
+                          Sync Now
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {(staffAttendees || [])
@@ -1388,4 +1960,5 @@ export default function App() {
       )}
     </div>
   );
+}
 }

@@ -168,8 +168,8 @@ app.post('/api/events', async (req, res) => {
         if (date.registration_types && date.registration_types.length > 0) {
           for (const regType of date.registration_types) {
             await query.run(
-              'INSERT INTO registration_types (event_date_id, name, price_pence, capacity) VALUES (?, ?, ?, ?)',
-              [dateId, regType.name, regType.price_pence, regType.capacity]
+              'INSERT INTO registration_types (event_date_id, name, price_pence, capacity, is_member_only) VALUES (?, ?, ?, ?, ?)',
+              [dateId, regType.name, regType.price_pence, regType.capacity, regType.is_member_only || 0]
             );
           }
         }
@@ -214,7 +214,7 @@ app.post('/api/membership/lookup', async (req, res) => {
 // ----------------------------------------------------
 app.post('/api/checkout', async (req, res) => {
   try {
-    const { delegate, basketItems } = req.body;
+    const { delegate, basketItems, discountCode } = req.body;
     if (!delegate || !basketItems || basketItems.length === 0) {
       return res.status(400).json({ error: 'Missing delegate or basket items' });
     }
@@ -228,8 +228,8 @@ app.post('/api/checkout', async (req, res) => {
       if (!regType) {
         return res.status(404).json({ error: `Registration type ${item.registration_type_id} not found` });
       }
-      if (regType.sold_count >= regType.capacity) {
-        return res.status(409).json({ error: `Ticket class "${item.name}" is sold out.` });
+      if (!item.waitlist && regType.sold_count >= regType.capacity) {
+        return res.status(409).json({ error: `Ticket class "${item.ticket_name}" is sold out.` });
       }
     }
 
@@ -250,32 +250,91 @@ app.post('/api/checkout', async (req, res) => {
       delegateId = result.id;
     }
 
+    // Process discount code
+    let discountPercent = 0;
+    if (discountCode) {
+      const codeRecord = await query.get(
+        "SELECT * FROM discount_codes WHERE code = ? AND (expires_at IS NULL OR expires_at >= ?)",
+        [discountCode.toUpperCase(), new Date().toISOString().split('T')[0]]
+      );
+      if (codeRecord) {
+        if (codeRecord.max_uses === null || codeRecord.uses_count < codeRecord.max_uses) {
+          discountPercent = codeRecord.value;
+          await query.run("UPDATE discount_codes SET uses_count = uses_count + 1 WHERE id = ?", [codeRecord.id]);
+        }
+      }
+    }
+
+    // Calculate totals after discounts
+    let totalAmount = 0;
+    const itemsWithDiscount = basketItems.map(item => {
+      const isWaitlist = item.waitlist ? true : false;
+      let finalPrice = isWaitlist ? 0 : item.price_pence;
+      if (!isWaitlist && discountPercent > 0) {
+        finalPrice = Math.floor(finalPrice * (1 - discountPercent / 100));
+      }
+      totalAmount += finalPrice;
+      return {
+        ...item,
+        price_pence: finalPrice,
+        is_waitlist: isWaitlist
+      };
+    });
+
     // Create simulated Stripe Payment Intent ID
-    const totalAmount = basketItems.reduce((acc, item) => acc + item.price_pence, 0);
     const stripePI = totalAmount > 0 ? 'pi_mock_' + Math.floor(100000 + Math.random() * 900000) : null;
 
     const confirmedBookings = [];
 
-    for (const item of basketItems) {
+    for (const item of itemsWithDiscount) {
       const reference = generateReference();
       const qrCodeB64 = `data:image/png;base64,QR_MOCK_PAYLOAD_${reference}`;
 
       // Insert booking
       const bookingResult = await query.run(
         `INSERT INTO bookings (reference, event_date_id, delegate_id, registration_type_id, status, payment_status, amount_pence, stripe_payment_intent_id, qr_code_b64, checked_in)
-         VALUES (?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, 0)`,
-        [reference, item.event_date_id, delegateId, item.registration_type_id, totalAmount > 0 ? 'pending' : 'paid', item.price_pence, stripePI, qrCodeB64]
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+        [
+          reference, 
+          item.event_date_id, 
+          delegateId, 
+          item.registration_type_id, 
+          item.is_waitlist ? 'waitlisted' : 'confirmed', 
+          item.is_waitlist ? 'pending' : (totalAmount > 0 ? 'pending' : 'paid'), 
+          item.price_pence, 
+          item.is_waitlist ? null : stripePI, 
+          qrCodeB64
+        ]
       );
       const bookingId = bookingResult.id;
 
       confirmedBookings.push({
         id: bookingId,
         reference,
-        event_name: item.event_name,
+        event_name: item.event_title,
         date_id: item.event_date_id,
         price_pence: item.price_pence,
-        qr_code_b64: qrCodeB64
+        qr_code_b64: qrCodeB64,
+        status: item.is_waitlist ? 'waitlisted' : 'confirmed'
       });
+
+      if (item.is_waitlist) {
+        // Schedule waitlist receipt email immediately
+        await query.run(
+          `INSERT INTO email_jobs (type, booking_id, recipient_email, subject, body_html, send_at, status)
+           VALUES ('waitlist', ?, ?, ?, ?, ?, 'pending')`,
+          [
+            bookingId,
+            delegate.email,
+            `Waitlist Registered: ${item.event_title}`,
+            `<h1>Hi ${delegate.first_name},</h1>
+             <p>You have been placed on the waitlist for <strong>${item.event_title}</strong> (Session: ${item.date_string}).</p>
+             <p><strong>Booking Reference:</strong> ${reference}</p>
+             <p>If a space becomes available, we will notify you immediately.</p>`,
+            new Date().toISOString()
+          ]
+        );
+      }
     }
 
     res.json({
@@ -493,7 +552,7 @@ app.get('/api/admin/events/:dateId/attendees', async (req, res) => {
   try {
     const attendees = await query.all(
       `SELECT b.id as booking_id, b.reference, b.payment_status, b.status as booking_status, b.amount_pence, b.created_at, b.checked_in, b.checked_in_at,
-              d.first_name, d.last_name, d.email, d.organisation, d.phone, d.dietary_requirements, d.accessibility_needs,
+              d.id as delegate_id, d.first_name, d.last_name, d.email, d.organisation, d.phone, d.dietary_requirements, d.accessibility_needs,
               rt.name as ticket_name,
               EXISTS(SELECT 1 FROM crm_sync_logs WHERE entity_type='EventRegistration' AND entity_id=b.id AND status='success') as crm_synced
        FROM bookings b
@@ -780,6 +839,182 @@ app.get('/api/admin/reports', async (req, res) => {
       attendanceStats,
       memberSplit
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// EXPANDED MVP API ENDPOINTS
+// ----------------------------------------------------
+
+// 1. Templates list
+app.get('/api/templates', async (req, res) => {
+  try {
+    const templates = await query.all('SELECT t.*, c.name as category_name FROM templates t LEFT JOIN categories c ON t.category_id = c.id');
+    res.json(templates);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Validate Discount Code
+app.post('/api/discount/validate', async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ error: 'Code is required' });
+    
+    const today = new Date().toISOString().split('T')[0];
+    const codeRecord = await query.get(
+      "SELECT * FROM discount_codes WHERE code = ? AND (expires_at IS NULL OR expires_at >= ?)",
+      [code.toUpperCase(), today]
+    );
+    if (!codeRecord) {
+      return res.status(404).json({ error: 'Invalid or expired promotional code.' });
+    }
+    if (codeRecord.max_uses !== null && codeRecord.uses_count >= codeRecord.max_uses) {
+      return res.status(400).json({ error: 'This promotional code has reached its usage limit.' });
+    }
+    res.json({
+      code: codeRecord.code,
+      discount_type: codeRecord.discount_type,
+      value: codeRecord.value
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Promote Booking from Waitlist
+app.post('/api/admin/bookings/:id/promote', async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const booking = await query.get(
+      `SELECT b.*, d.email, d.first_name, e.title as event_title, ed.location, ed.start_datetime, rt.name as ticket_name, rt.price_pence
+       FROM bookings b
+       JOIN delegates d ON b.delegate_id = d.id
+       JOIN event_dates ed ON b.event_date_id = ed.id
+       JOIN events e ON ed.event_id = e.id
+       JOIN registration_types rt ON b.registration_type_id = rt.id
+       WHERE b.id = ? AND b.status = 'waitlisted'`,
+      [bookingId]
+    );
+    if (!booking) {
+      return res.status(404).json({ error: 'Waitlisted booking not found or already promoted.' });
+    }
+
+    // Promote booking
+    await query.run(
+      "UPDATE bookings SET status = 'confirmed', payment_status = 'paid' WHERE id = ?",
+      [bookingId]
+    );
+
+    // Increment capacities
+    await query.run('UPDATE event_dates SET sold_count = sold_count + 1 WHERE id = ?', [booking.event_date_id]);
+    await query.run('UPDATE registration_types SET sold_count = sold_count + 1 WHERE id = ?', [booking.registration_type_id]);
+
+    // Create simulated Payment record
+    const payResult = await query.run(
+      "INSERT INTO payments (booking_id, stripe_charge_id, amount_pence, vat_pence, status) VALUES (?, ?, ?, ?, 'succeeded')",
+      [bookingId, 'ch_promoted_' + Math.floor(100000 + Math.random() * 900000), booking.price_pence, Math.floor(booking.price_pence * 0.2)]
+    );
+
+    // Schedule Waitlist Promotion confirmation email
+    await query.run(
+      `INSERT INTO email_jobs (type, booking_id, recipient_email, subject, body_html, send_at, status)
+       VALUES ('confirmation', ?, ?, ?, ?, ?, 'pending')`,
+      [
+        bookingId,
+        booking.email,
+        `Off the Waitlist: Booking Confirmed for ${booking.event_title}`,
+        `<h1>Hi ${booking.first_name},</h1>
+         <p>Good news! A space has become available and your waitlist request for <strong>${booking.event_title}</strong> has been promoted to a confirmed booking!</p>
+         <p><strong>Booking Ref:</strong> ${booking.reference}</p>
+         <p><strong>Ticket Type:</strong> ${booking.ticket_name}</p>
+         <p><strong>Date/Time:</strong> ${booking.start_datetime}</p>
+         <p><strong>Venue:</strong> ${booking.location}</p>
+         <div style="margin:20px 0; padding:15px; border: 1px dashed #ccc; border-radius: 8px; max-width: 300px;">
+           <div style="font-weight:bold; font-size:16px; margin-bottom:5px;">🎫 REC DELEGATE BADGE</div>
+           <img src="${booking.qr_code_b64}" width="200" alt="Ticket QR Badge"/>
+         </div>`,
+        new Date().toISOString()
+      ]
+    );
+
+    // Log Dynamics CRM Sync
+    await query.run(
+      "INSERT INTO crm_sync_logs (direction, entity_type, entity_id, status, payload) VALUES ('to_crm', 'EventRegistration', ?, 'success', ?)",
+      [bookingId, JSON.stringify({ booking_reference: booking.reference, status: 'confirmed', notes: 'Promoted from waitlist' })]
+    );
+
+    res.json({ success: true, message: 'Delegate successfully promoted and confirmation email queued.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Download Finance CSV Report
+app.get('/api/admin/reports/finance-csv', async (req, res) => {
+  try {
+    const transactions = await query.all(`
+      SELECT p.id as payment_id, b.reference, e.title as event_title, 
+             (d.first_name || ' ' || d.last_name) as delegate_name, d.email,
+             p.amount_pence, p.vat_pence, p.created_at, p.stripe_charge_id
+      FROM payments p
+      JOIN bookings b ON p.booking_id = b.id
+      JOIN event_dates ed ON b.event_date_id = ed.id
+      JOIN events e ON ed.event_id = e.id
+      JOIN delegates d ON b.delegate_id = d.id
+      WHERE p.status = 'succeeded'
+      ORDER BY p.created_at DESC
+    `);
+
+    let csvContent = 'Payment ID,Booking Reference,Event Title,Delegate Name,Delegate Email,Amount (GBP),VAT (GBP),Date,Stripe Charge ID\n';
+    for (const t of transactions) {
+      const amt = (t.amount_pence / 100).toFixed(2);
+      const vat = (t.vat_pence / 100).toFixed(2);
+      const dateStr = new Date(t.created_at).toLocaleDateString('en-GB');
+      csvContent += `"${t.payment_id}","${t.reference}","${t.event_title.replace(/"/g, '""')}","${t.delegate_name.replace(/"/g, '""')}","${t.email}","£${amt}","£${vat}","${dateStr}","${t.stripe_charge_id}"\n`;
+    }
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=daily_finance_report.csv');
+    res.status(200).send(csvContent);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. GDPR Right to Erasure
+app.post('/api/admin/delegates/:id/erase', async (req, res) => {
+  try {
+    const delegateId = req.params.id;
+    const delegate = await query.get('SELECT * FROM delegates WHERE id = ?', [delegateId]);
+    if (!delegate) return res.status(404).json({ error: 'Delegate not found' });
+
+    // Anonymize delegate
+    const anonymizedEmail = `gdpr-erased-${delegateId}@rec-event-platform.co.uk`;
+    await query.run(
+      `UPDATE delegates 
+       SET first_name = '[ANONYMIZED_GDPR]', 
+           last_name = '[ANONYMIZED_GDPR]', 
+           email = ?, 
+           organisation = NULL, 
+           phone = NULL, 
+           dietary_requirements = NULL, 
+           accessibility_needs = NULL, 
+           dynamics_contact_id = NULL 
+       WHERE id = ?`,
+      [anonymizedEmail, delegateId]
+    );
+
+    // Log CRM Sync log for GDPR
+    await query.run(
+      "INSERT INTO crm_sync_logs (direction, entity_type, entity_id, status, payload) VALUES ('to_crm', 'Contact', ?, 'success', ?)",
+      [delegateId, JSON.stringify({ delegate_id: delegateId, gdpr_erased: true, anonymized_email: anonymizedEmail })]
+    );
+
+    res.json({ success: true, message: 'GDPR Right to Erasure executed. Personal Identifiable Information has been permanently anonymized.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

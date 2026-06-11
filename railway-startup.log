@@ -1,0 +1,500 @@
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:26:17.852Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:26:22.852Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:26:27.856Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:26:32.860Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:26:37.862Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:26:42.866Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:26:47.870Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:26:52.872Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:26:57.876Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:27:02.882Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+  __augmented: true
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+}
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:27:07.887Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:27:12.890Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:27:17.894Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:27:22.895Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+  __augmented: true
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:27:27.897Z' ], [Function (anonymous)])
+}
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:27:32.901Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:27:37.906Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:27:42.912Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:27:47.916Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:27:52.917Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:27:57.923Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:28:02.924Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:28:07.928Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:28:12.932Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:28:17.934Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:28:22.935Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:28:27.939Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:28:32.942Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:28:37.943Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:28:42.946Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:28:47.951Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:28:52.952Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:28:57.957Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:29:02.958Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:29:07.963Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:29:12.965Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:29:17.968Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:29:22.969Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:29:27.975Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
+  __augmented: true
+}
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:29:32.980Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+Error in email background worker: Error: SQLITE_ERROR: no such table: email_jobs
+--> in Database#all("SELECT * FROM email_jobs WHERE status = 'pending' AND send_at <= ?", [ '2026-06-11T13:29:37.981Z' ], [Function (anonymous)])
+    at /app/database.js:34:10
+    at new Promise (<anonymous>)
+    at Object.all (/app/database.js:33:12)
+    at Timeout._onTimeout (/app/server.js:26:37)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7) {
+  errno: 1,
+  code: 'SQLITE_ERROR',
+  __augmented: true
+}
