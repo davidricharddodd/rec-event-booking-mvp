@@ -18,6 +18,15 @@ function generateReference() {
 }
 
 // ----------------------------------------------------
+// DATABASE INITIALIZATION
+// ----------------------------------------------------
+initDatabase().then(() => {
+  console.log('Database initialized successfully.');
+}).catch(err => {
+  console.error('Database initialization failed:', err);
+});
+
+// ----------------------------------------------------
 // BACKGROUND WORKERS (Simulators)
 // ----------------------------------------------------
 // Simulated Email Worker: polls pending emails and marks them sent
