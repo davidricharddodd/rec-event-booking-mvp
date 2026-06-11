@@ -14,8 +14,13 @@ export default function App() {
   const [selectedDateId, setSelectedDateId] = useState('');
   const [selectedTicketId, setSelectedTicketId] = useState('');
   const [basket, setBasket] = useState(() => {
-    const saved = localStorage.getItem('rec_basket');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('rec_basket');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Failed to parse basket from localStorage:', e);
+      return [];
+    }
   });
   const [showBasketDrawer, setShowBasketDrawer] = useState(false);
   
@@ -107,26 +112,31 @@ export default function App() {
   const fetchEvents = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/events?status=published`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const data = await res.json();
-      setEvents(data);
+      setEvents(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching events:', err);
+      setEvents([]);
     }
   };
 
   const fetchCategories = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/categories`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const data = await res.json();
-      setCategories(data);
+      setCategories(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching categories:', err);
+      setCategories([]);
     }
   };
 
   const fetchAdminSummary = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/admin/dashboard/summary`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const data = await res.json();
       setAdminSummary(data);
     } catch (err) {
@@ -137,16 +147,19 @@ export default function App() {
   const fetchAdminAttendees = async (dateId) => {
     try {
       const res = await fetch(`${API_BASE}/api/admin/events/${dateId}/attendees`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const data = await res.json();
-      setAdminAttendees(data);
+      setAdminAttendees(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error loading admin attendees:', err);
+      setAdminAttendees([]);
     }
   };
 
   const fetchAdminReports = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/admin/reports`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const data = await res.json();
       setAdminReportData(data);
     } catch (err) {
@@ -157,43 +170,52 @@ export default function App() {
   const fetchStaffEvents = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/app/events`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const data = await res.json();
-      setStaffEvents(data);
-      if (data.length > 0 && !selectedStaffDateId) {
-        setSelectedStaffDateId(data[0].event_date_id);
+      const arr = Array.isArray(data) ? data : [];
+      setStaffEvents(arr);
+      if (arr.length > 0 && !selectedStaffDateId) {
+        setSelectedStaffDateId(arr[0].event_date_id);
       }
     } catch (err) {
       console.error('Error fetching staff events:', err);
+      setStaffEvents([]);
     }
   };
 
   const fetchStaffAttendees = async (dateId) => {
     try {
       const res = await fetch(`${API_BASE}/api/app/events/${dateId}/attendees`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const data = await res.json();
-      setStaffAttendees(data);
+      setStaffAttendees(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error loading staff attendees:', err);
+      setStaffAttendees([]);
     }
   };
 
   const fetchCRMLogs = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/crm/logs`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const data = await res.json();
-      setCrmLogs(data);
+      setCrmLogs(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error loading crm logs:', err);
+      setCrmLogs([]);
     }
   };
 
   const fetchEmailQueue = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/email-queue`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const data = await res.json();
-      setEmails(data);
+      setEmails(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error loading email queue:', err);
+      setEmails([]);
     }
   };
 
@@ -537,7 +559,7 @@ export default function App() {
                       onChange={(e) => { setSelectedDateId(e.target.value); setSelectedTicketId(''); }}
                     >
                       <option value="">Select Date...</option>
-                      {selectedEvent.dates.map(d => (
+                      {selectedEvent.dates?.map(d => (
                         <option key={d.id} value={d.id} disabled={d.status === 'full'}>
                           {new Date(d.start_datetime).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} ({d.location}) {d.status === 'full' ? '— FULL' : ''}
                         </option>
@@ -549,7 +571,7 @@ export default function App() {
                     <div style={{ marginTop: '20px' }}>
                       <h4 style={{ marginBottom: '12px', fontSize: '14px', color: 'hsl(var(--text-secondary))' }}>Available Tickets</h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {selectedEvent.dates.find(d => d.id === parseInt(selectedDateId)).registration_types.map(t => {
+                        {(selectedEvent.dates?.find(d => d.id === parseInt(selectedDateId))?.registration_types || []).map(t => {
                           const isSoldOut = t.sold_count >= t.capacity;
                           return (
                             <div 
@@ -613,8 +635,8 @@ export default function App() {
               </div>
 
               <div className="grid-3">
-                {events.map(event => {
-                  const firstDate = event.dates[0];
+                {(events || []).map(event => {
+                  const firstDate = event.dates?.[0];
                   const formattedDate = firstDate ? new Date(firstDate.start_datetime).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
                   return (
                     <div key={event.id} className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -874,7 +896,7 @@ export default function App() {
                     ⚠️ Events Needing Marketing Attention (Low Ticket Sales)
                   </h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {adminSummary.needsAttention.map((e, idx) => (
+                    {adminSummary.needsAttention?.map((e, idx) => (
                       <div key={idx} style={{ fontSize: '14px', display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: idx < adminSummary.needsAttention.length - 1 ? '1px dashed rgba(245,158,11,0.2)' : 'none' }}>
                         <span><strong>{e.title}</strong> — Starting {new Date(e.start_datetime).toLocaleDateString()}</span>
                         <span>Ticket Sales: {e.sold_count} / {e.capacity} sold</span>
@@ -897,7 +919,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {adminSummary?.events.map((event) => (
+                    {adminSummary?.events?.map((event) => (
                       <tr key={event.id} style={{ borderBottom: '1px solid hsl(var(--border-glass))' }}>
                         <td style={{ padding: '16px 24px', fontWeight: 'bold' }}>{event.title}</td>
                         <td style={{ padding: '16px' }}>
@@ -946,7 +968,7 @@ export default function App() {
                   <p>No paid registrations yet.</p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {adminReportData?.revenueByCategory.map((c, idx) => (
+                    {adminReportData?.revenueByCategory?.map((c, idx) => (
                       <div key={idx}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
                           <span>{c.category}</span>
@@ -964,7 +986,7 @@ export default function App() {
               <div className="glass-card">
                 <h3 style={{ marginBottom: '16px' }}>Audit Attendance & Check-in Rates</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {adminReportData?.attendanceStats.map((e, idx) => {
+                  {adminReportData?.attendanceStats?.map((e, idx) => {
                     const attendedRate = e.sold_count > 0 ? (e.checked_in / e.sold_count) * 100 : 0;
                     return (
                       <div key={idx} style={{ paddingBottom: '12px', borderBottom: idx < adminReportData.attendanceStats.length - 1 ? '1px solid hsl(var(--border-glass))' : 'none' }}>
@@ -997,7 +1019,7 @@ export default function App() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {adminAttendees.length === 0 ? (
+              {(!adminAttendees || adminAttendees.length === 0) ? (
                 <p>No delegates registered for this session.</p>
               ) : (
                 adminAttendees.map((a) => (
@@ -1125,7 +1147,7 @@ export default function App() {
                       value={selectedStaffDateId}
                       onChange={(e) => setSelectedStaffDateId(e.target.value)}
                     >
-                      {staffEvents.map(e => (
+                      {staffEvents?.map(e => (
                         <option key={e.event_date_id} value={e.event_date_id}>
                           {e.title} ({new Date(e.start_datetime).toLocaleDateString()})
                         </option>
@@ -1148,7 +1170,7 @@ export default function App() {
                   </div>
 
                   <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {staffAttendees
+                    {(staffAttendees || [])
                       .filter(a => `${a.first_name} ${a.last_name}`.toLowerCase().includes(staffSearchQuery.toLowerCase()))
                       .map(a => (
                         <div 
@@ -1199,7 +1221,7 @@ export default function App() {
                 {crmLogs.filter(l => l.status === 'failed').length === 0 ? (
                   <p style={{ fontSize: '13px' }}>No active contact sync conflicts found.</p>
                 ) : (
-                  crmLogs.filter(l => l.status === 'failed').map((log) => {
+                  (crmLogs || []).filter(l => l.status === 'failed').map((log) => {
                     const payloadObj = JSON.parse(log.payload || '{}');
                     return (
                       <div key={log.id} style={{ background: 'var(--error-glow)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
@@ -1244,7 +1266,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {crmLogs.map((log) => (
+                    {crmLogs?.map((log) => (
                       <tr key={log.id} style={{ borderBottom: '1px solid hsl(var(--border-glass))' }}>
                         <td style={{ padding: '12px 24px', color: 'hsl(var(--text-muted))' }}>
                           {new Date(log.created_at).toLocaleTimeString()}
@@ -1299,7 +1321,7 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {emails.map((email) => (
+                {emails?.map((email) => (
                   <tr key={email.id} style={{ borderBottom: '1px solid hsl(var(--border-glass))' }}>
                     <td style={{ padding: '16px 24px', textTransform: 'capitalize', fontWeight: 'bold' }}>{email.type}</td>
                     <td style={{ padding: '16px' }}>{email.recipient_email}</td>
