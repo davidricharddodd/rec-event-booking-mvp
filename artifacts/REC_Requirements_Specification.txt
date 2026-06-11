@@ -1,0 +1,719 @@
+REQUIREMENTS SPECIFICATION
+REC Event Booking Platform
+Video Transcription & Summarisation App
+Author: David Dodd  |  Head of Technology & Digital, REC  |  Version 1.0  |  June 2026
+
+Document Title
+REC Event Booking Platform — Requirements Specification
+Version
+1.0 (Draft for Review)
+Date
+June 2026
+Author
+David Dodd — Head of Technology, REC
+Status
+Draft — Pending stakeholder sign-off
+Classification
+Internal — Commercial in Confidence
+Source Documents
+Event Booking System Spec v1.0; REC Event Proposal Transcript
+Review By
+Karen (Events), Mike Clegg (Web & Digital), Vendor Lead
+
+1. Executive Summary
+
+The Recruitment & Employment Confederation (REC) requires a replacement for its existing Cvent-based event management platform. This document captures the full requirements for a custom-built solution that will serve as the primary system for managing, publishing, and processing registrations for REC events — including free and paid seminars, CPD workshops, Legal Helpline Q&As, and the Annual Conference.
+
+A vendor discovery call confirmed the proposed approach: a React/Next.js + Node.js/Python + PostgreSQL web platform, paired with a React Native mobile app, hosted on Azure, and integrated with REC's Dynamics 365 CRM and CS5 website. The vendor's fixed-price proposal is £75,000 (one-off build) with a £3,000–£4,000/year maintenance retainer, on a 21-week delivery timeline.
+
+1.1 Objectives
+	•	Replace Cvent with a fully-owned, cost-efficient event platform that integrates natively with Dynamics 365.
+	•	Support all current REC event types with no loss of capability.
+	•	Provide a seamless registration and payment experience for members and non-members alike.
+	•	Enable self-service event management for the REC events team with no vendor dependency for day-to-day operations.
+	•	Deliver a companion mobile app for staff check-in and, in Phase 2, attendee engagement.
+	•	Achieve GDPR and PCI-DSS compliance from day one.
+
+1.2 Scope Summary
+In Scope
+Event creation & management, registration engine, payment (Stripe), email automation, CRM integration (Dynamics 365), CS5 website widget, staff mobile app, reporting & dashboards, RBAC, GDPR controls, Cvent data migration, Video Transcription App.
+Out of Scope
+Dynamics 365 CRM customisation (beyond agreed API integration points), CS5 CMS development, Eventbrite-style public marketplace listing, physical hardware for badge printing (vendor-supplied peripheral).
+Phase 1
+Core platform, staff app, CRM integration, CS5 widget, Stripe payments, email workflows, reporting.
+Phase 2
+Attendee-facing mobile app (combined staff+attendee), QR badge scanning at Annual Conference, AI event creation assistant.
+Excluded Systems
+HR Henry Copilot, Audit Online, Marketing Automation Platform (separate workstreams).
+
+2. Stakeholders & User Personas
+
+2.1 Stakeholder Register
+Karen (Events)
+Primary business owner. Manages event creation, registration, reporting, and on-the-day logistics. Key sign-off authority for functional requirements.
+David Dodd
+Head of Technology & Digital. Technical and commercial decision-maker. Owns integration architecture and vendor selection.
+Mike Clegg
+Web & Digital Manager. Owns CS5 website. Responsible for iframe widget integration and UX consistency.
+Gemma (Marketing)
+Owns email marketing and brand. Approves email template designs and automated workflow logic.
+Finance Team
+Approves payment integration and reconciliation reporting. Requires Stripe transaction data aligned to internal accounting.
+Members & Delegates
+External users registering for and attending events. Demand a simple, mobile-friendly booking flow.
+REC Staff (Check-in)
+On-the-day event staff using the mobile app for QR badge scanning and attendance management.
+Vendor (Development)
+Responsible for design, build, and maintenance of the platform per agreed spec and SLA.
+London Systems (IT)
+Managed IT provider. Handles Entra ID SSO configuration, Azure provisioning support, and network security.
+
+2.2 User Personas
+Persona 1 — Events Manager (Karen)
+Context
+Karen manages 80–120 events per year ranging from free 30-minute Legal Helpline Q&As to multi-day annual conferences with hundreds of delegates. She currently builds events in Cvent and manually reconciles data in Dynamics 365. Her biggest pain points are double-entry, lack of real-time reporting, and the high cost per-registration that Cvent charges.
+	•	Needs to create events quickly using templates, without requiring developer support.
+	•	Must be able to manage waitlists, capacity, and cancellations in real time.
+	•	Requires automated email workflows that trigger without manual intervention.
+	•	Needs reporting dashboards she can share with senior leadership.
+Persona 2 — REC Member (Delegate)
+Context
+A typical REC member registers for 3–5 events per year. They may be booking for themselves and/or colleagues. They expect a smooth, branded, mobile-responsive experience and want confirmation, joining instructions, and reminders without chasing.
+	•	Must be able to find and register for events easily via the CS5 website.
+	•	Expects instant confirmation email with calendar invite.
+	•	May need to book multiple colleagues in a single transaction.
+	•	Wants to manage their own bookings (transfer, cancel) without calling REC.
+Persona 3 — Non-Member (Prospect)
+Context
+Non-members can attend some REC events at a higher price point. Registration creates a CRM contact record and triggers a membership follow-up workflow. This persona is a key acquisition channel for REC.
+	•	Must be able to register and pay without holding a REC membership.
+	•	Pays a higher ticket price; system must enforce differential pricing by registration type.
+	•	Post-event, receives a targeted membership offer communication.
+Persona 4 — Event Staff (Check-in)
+Context
+REC staff manage check-in at physical events using a mobile app. At larger events (Annual Conference), QR badge scanning is required. Staff need offline resilience in case of poor venue WiFi.
+	•	Needs iOS and Android app with QR scanner for badge check-in.
+	•	Must work in low-connectivity environments with offline sync capability.
+	•	Needs to see live attendee dashboard and flag no-shows.
+
+3. Functional Requirements — Event Booking Platform
+
+Requirements are rated using MoSCoW prioritisation: MUST (mandatory for go-live), SHOULD (high value, target Phase 1), COULD (nice-to-have, Phase 2 candidate), WON'T (explicitly out of scope for this phase).
+
+3.1 Event Architecture & Configuration
+REQ ID
+Priority
+Requirement
+Notes / Acceptance Criteria
+FR-01
+MUST
+The system shall support standalone single-occurrence events.
+Single session, single venue, fixed capacity.
+FR-02
+MUST
+The system shall support umbrella/series events containing multiple child sessions.
+Parent event groups sub-events; delegates can register per session or for the whole series.
+FR-03
+MUST
+The system shall support both online (virtual) and in-person event types.
+Location field mandatory for in-person; virtual link field mandatory for online.
+FR-04
+MUST
+The system shall allow events to be categorised (CPD, Conference, Webinar, Legal Helpline, etc.).
+Categories drive filtering on the CS5 widget and reporting segmentation.
+FR-05
+MUST
+Events shall have configurable capacity limits with automatic waitlist activation when full.
+Waitlist must send automatic notification when a place becomes available.
+FR-06
+MUST
+The system shall support an event template library to accelerate event creation.
+Templates capture default settings: pricing, email workflows, registration types, description structure.
+FR-07
+SHOULD
+The system shall support recurring event schedules (e.g. monthly Legal Helpline Q&As).
+Defined recurrence pattern with ability to edit individual occurrences.
+FR-08
+SHOULD
+The system shall detect scheduling conflicts for speakers/venues before publishing.
+Warning displayed to event manager; override allowed with confirmation.
+FR-09
+COULD
+The system shall provide an AI-assisted event creation wizard that pre-populates fields based on event type and description.
+Powered by OpenAI API; Phase 2 feature.
+
+3.2 Registration & Ticketing
+REQ ID
+Priority
+Requirement
+Notes / Acceptance Criteria
+FR-10
+MUST
+The system shall support multiple registration types per event (e.g. Member, Non-Member, Speaker, Sponsor, Staff, VIP).
+Each type has independent pricing, capacity allocation, and visibility rules.
+FR-11
+MUST
+The system shall enforce differential pricing based on registration type.
+Member price vs Non-Member price enforced via CRM membership status lookup.
+FR-12
+MUST
+The system shall support group booking — one purchaser registering multiple attendees in a single transaction.
+Individual attendee details (name, dietary, etc.) collected per seat.
+FR-13
+MUST
+The system shall support a multi-event basket enabling delegates to register for multiple events and pay once.
+Single Stripe checkout for basket contents.
+FR-14
+MUST
+The system shall support free events (£0) with no payment step, and paid events with Stripe payment.
+Free registrations confirmed immediately; paid require successful Stripe payment.
+FR-15
+MUST
+The system shall support discount codes and promotional pricing.
+Code applied at checkout; codes have optional expiry, usage limits, and per-event scope.
+FR-16
+MUST
+The system shall collect configurable custom registration fields per event (dietary requirements, job title, accessibility needs, etc.).
+Field definitions set per event template; responses stored in CRM contact record.
+FR-17
+SHOULD
+Delegates shall be able to transfer their registration to a colleague.
+Self-service via delegate portal; Events team notified.
+FR-18
+SHOULD
+Delegates shall be able to cancel their registration and receive a refund per the defined cancellation policy.
+Refund processed automatically via Stripe refund API within defined window.
+FR-19
+COULD
+The system shall support CPD points tracking and certificate generation post-event.
+Certificate PDF emailed on attendance confirmation.
+
+3.3 Payment Processing
+REQ ID
+Priority
+Requirement
+Notes / Acceptance Criteria
+FR-20
+MUST
+The system shall integrate with Stripe as the sole payment gateway for card payments.
+Stripe Elements or Stripe Checkout embedded within the registration flow.
+FR-21
+MUST
+Stripe webhook events shall update booking status in real time (payment_intent.succeeded, payment_intent.payment_failed).
+No booking confirmed without payment_intent.succeeded webhook.
+FR-22
+MUST
+The system shall support full and partial refunds via the Stripe API.
+Refund triggered by Events team via admin dashboard; confirmation email sent automatically.
+FR-23
+MUST
+Financial transactions shall be reconciled in a daily report exportable to CSV/Excel for Finance team.
+Report shows event name, delegate, amount, Stripe transaction ID, date, VAT.
+FR-24
+MUST
+The system shall be PCI-DSS compliant — no card data stored on REC infrastructure.
+All card data handled exclusively by Stripe; compliance validated pre-launch.
+FR-25
+SHOULD
+The system shall support invoice generation for organisations paying by BACS.
+Invoice PDF emailed; booking held in pending state awaiting payment confirmation from Finance.
+
+3.4 Website Integration (CS5 Widget)
+REQ ID
+Priority
+Requirement
+Notes / Acceptance Criteria
+FR-26
+MUST
+The system shall provide an embeddable iframe widget for the CS5 REC website to display the events calendar.
+Widget must be responsive and match REC brand guidelines.
+FR-27
+MUST
+The iframe widget shall support filtering by event type, date range, and format (online/in-person).
+Filters rendered within the iframe; no CS5 page reload required.
+FR-28
+MUST
+The iframe widget shall use postMessage API for cross-origin height adjustment to prevent scroll bars.
+Tested against latest Chrome, Firefox, Safari, Edge.
+FR-29
+SHOULD
+The widget shall support deep-linking to individual event pages from external URLs.
+SEO-friendly event page URLs on REC domain preferred over iframe-only navigation.
+FR-30
+SHOULD
+The events platform shall provide a public API endpoint that CS5 can query for event data independently of the iframe.
+Supports future CS5 redesign without iframe dependency.
+
+3.5 Email Automation
+REQ ID
+Priority
+Requirement
+Notes / Acceptance Criteria
+FR-31
+MUST
+The system shall send automated transactional emails: booking confirmation, waitlist confirmation, cancellation confirmation, payment receipt.
+Sent within 60 seconds of trigger event. Branded HTML templates.
+FR-32
+MUST
+The system shall send automated event reminder emails: 7-day reminder and 24-hour reminder with joining instructions.
+Schedule configurable per event; opt-out tracked in CRM.
+FR-33
+MUST
+The system shall send post-event follow-up emails: feedback survey link, recording/materials link (if applicable).
+Sent within 4 hours of event end time.
+FR-34
+SHOULD
+Email templates shall be editable by the Events team without developer intervention.
+WYSIWYG template editor in admin dashboard; merge fields supported.
+FR-35
+SHOULD
+The system shall integrate with Dynamics 365 email infrastructure as the sending channel (reusing existing SMTP/Exchange setup).
+Avoids need for separate email service; vendor to confirm feasibility with London Systems.
+FR-36
+COULD
+The system shall support audience segmentation for event promotional emails (member type, past attendance, geography).
+Phase 2; requires CRM data query API.
+
+3.6 Admin Dashboard & Reporting
+REQ ID
+Priority
+Requirement
+Notes / Acceptance Criteria
+FR-37
+MUST
+The system shall provide an admin dashboard showing real-time event stats: registrations, capacity used, revenue, waitlist count.
+Available to Events team and senior staff. Mobile responsive.
+FR-38
+MUST
+The system shall provide a delegate management view per event: list of registrants, attendance status, dietary flags, payment status.
+Exportable to CSV and Excel.
+FR-39
+MUST
+The system shall provide a cross-event reporting module: total registrations by period, revenue by event type, member vs non-member split.
+Data available in dashboard and as scheduled email report.
+FR-40
+SHOULD
+Reports shall be filterable by event type, date range, member status, and geography.
+Filter state persists during session.
+FR-41
+SHOULD
+The system shall provide a Dynamics 365 sync status dashboard showing last sync time, error log, and record count.
+Admin-only view; alerts on sync failure.
+FR-42
+COULD
+The system shall provide predictive attendance forecasting based on historical registration patterns.
+AI-powered; Phase 2 feature.
+
+3.7 Mobile App — Staff Check-in
+REQ ID
+Priority
+Requirement
+Notes / Acceptance Criteria
+FR-43
+MUST
+The system shall include an iOS and Android mobile app for event staff to manage on-the-day check-in.
+React Native. Available on App Store and Google Play under REC developer accounts.
+FR-44
+MUST
+The app shall support QR code scanning for badge-based delegate check-in.
+QR codes generated by the platform and included in confirmation emails / printed badges.
+FR-45
+MUST
+The app shall function in offline mode, syncing check-in data when connectivity is restored.
+Local SQLite cache with background sync queue.
+FR-46
+MUST
+The app shall display live attendee counts and flag delegate special requirements (dietary, accessibility).
+Colour-coded flags visible in the check-in list.
+FR-47
+SHOULD
+The app shall support manual check-in search (name or email) for delegates without QR codes.
+Fuzzy search; check-in logged with staff user identity for audit trail.
+FR-48
+COULD
+Phase 2: the app shall serve as an attendee-facing event guide with agenda, speaker profiles, and networking features.
+Vendor proposed combined staff/attendee app; Phase 2 scope pending business case.
+
+3.8 Dynamics 365 CRM Integration
+REQ ID
+Priority
+Requirement
+Notes / Acceptance Criteria
+FR-49
+MUST
+The system shall perform a real-time membership validation lookup against Dynamics 365 during registration to determine pricing tier.
+API call to D365 on email address entry; result cached for session duration.
+FR-50
+MUST
+The system shall write new contact records to Dynamics 365 for registrants not already in the CRM.
+Duplicate detection logic: match on email address; merge if existing.
+FR-51
+MUST
+The system shall write event booking records to Dynamics 365 (event, delegate, booking status, payment status, amount).
+Creates/updates Opportunity or Activity record per agreed CRM schema.
+FR-52
+MUST
+CRM integration shall be bi-directional: cancellations or status updates in CRM must reflect in the event platform.
+Webhook or polling-based sync; max 15-minute lag for CRM-to-platform updates.
+FR-53
+SHOULD
+The Dynamics 365 integration credentials and API endpoints shall be provided by London Systems (helpdesk@lonsys.co.uk) per agreed service request.
+Integration config stored in Azure Key Vault; not hardcoded.
+FR-54
+SHOULD
+The system shall support a manual "re-sync" trigger for individual records from the admin dashboard.
+For use when automated sync fails; logged in audit trail.
+
+3.9 Access Control & Security
+REQ ID
+Priority
+Requirement
+Notes / Acceptance Criteria
+FR-55
+MUST
+The admin portal shall authenticate REC staff exclusively via Microsoft Entra ID (SSO).
+OAuth 2.0 / OIDC. No standalone username/password for staff accounts.
+FR-56
+MUST
+Role-based access control (RBAC) shall be implemented with at minimum four roles: Super Admin, Events Manager, Reporting Viewer, and Read-Only.
+Role definitions agreed with Karen and David. Managed in admin UI.
+FR-57
+MUST
+All data at rest shall be encrypted (AES-256). All data in transit shall use TLS 1.2 or higher.
+Applied to Azure PostgreSQL, Blob Storage, and all API endpoints.
+FR-58
+MUST
+The system shall support GDPR Article 17 (Right to Erasure) for delegate records.
+Automated erasure workflow accessible from admin dashboard; logs erasure action and timestamp.
+FR-59
+MUST
+Personally Identifiable Information (PII) fields shall be identified and handled per REC's Data Protection Policy.
+PII inventory documented by vendor pre-launch.
+FR-60
+SHOULD
+A full audit log shall capture all admin actions with user identity and timestamp.
+Retained for minimum 12 months; exportable.
+
+3.10 Data Migration
+REQ ID
+Priority
+Requirement
+Notes / Acceptance Criteria
+FR-61
+MUST
+All historical event data shall be migrated from Cvent prior to go-live.
+Scope: events from January 2022 to migration date. Data map agreed with vendor.
+FR-62
+MUST
+Migrated delegate records shall be matched to existing Dynamics 365 CRM contacts.
+Match on email address; unmatched records flagged for manual review.
+FR-63
+MUST
+REC to provide a full Cvent data export (CSV/API) to the vendor as a prerequisite.
+Due date: 4 weeks before target go-live. Owner: Karen / Events team.
+FR-64
+SHOULD
+A migration validation report shall be produced comparing Cvent record counts vs migrated record counts.
+Discrepancies >0.5% require investigation before go-live sign-off.
+
+4. Non-Functional Requirements
+
+The following non-functional requirements apply to the REC Event Booking Platform and, where indicated, the Video Transcription App.
+
+NFR ID
+Category
+Requirement
+Target / Metric
+NFR-01
+Performance
+Event listing page shall load within 2 seconds under normal load conditions.
+p95 < 2s at 200 concurrent users; measured via Azure Application Insights.
+NFR-02
+Performance
+Registration checkout shall complete (form to confirmation) within 5 seconds under normal load.
+Includes Stripe payment round-trip.
+NFR-03
+Availability
+The platform shall achieve 99.5% uptime excluding planned maintenance windows.
+Measured monthly; planned maintenance communicated 72 hours in advance.
+NFR-04
+Availability
+Planned maintenance shall not occur within 48 hours of a scheduled event.
+Monitored via Azure monitor alerts linked to event calendar.
+NFR-05
+Scalability
+The platform shall support up to 500 concurrent users without degradation.
+Load tested pre-launch; auto-scaling configured on Azure App Service.
+NFR-06
+Scalability
+The platform shall handle peak Annual Conference traffic (est. 800+ registrations in a 2-hour window).
+Stress tested before Annual Conference launch.
+NFR-07
+Security
+All API endpoints shall require authentication; no unauthenticated write operations permitted.
+Penetration test required pre-launch; vendor responsible.
+NFR-08
+Security
+Stripe integration shall be PCI-DSS SAQ-A compliant.
+Validated by Stripe compliance documentation pre-launch.
+NFR-09
+Security
+The platform shall not store credit card numbers, CVVs, or raw payment data on REC systems.
+Stripe tokenisation only.
+NFR-10
+Accessibility
+The delegate-facing registration flow shall meet WCAG 2.1 AA accessibility standards.
+Automated Axe scan + manual screen reader test pre-launch.
+NFR-11
+Browser Support
+The web platform shall support the latest two versions of Chrome, Firefox, Safari, and Edge.
+BrowserStack cross-browser testing pre-launch.
+NFR-12
+Mobile
+The delegate registration flow shall be fully functional on mobile devices (iOS 16+, Android 12+).
+Responsive design; tested on iPhone 14 and Samsung Galaxy S22 as reference devices.
+NFR-13
+GDPR
+All personal data shall be stored on Azure UK regions only (UK South or UK West).
+Azure region confirmed in infrastructure spec; no data residency outside UK.
+NFR-14
+GDPR
+Data retention periods shall be configurable per record type, with automated purge on expiry.
+Default: 7 years for financial records; 2 years for event registrations (unless active contact).
+NFR-15
+Backup
+The PostgreSQL database shall be backed up daily with point-in-time restore capability for 30 days.
+Azure PostgreSQL automated backups; restore tested quarterly.
+NFR-16
+Observability
+The platform shall emit structured logs and application metrics to Azure Application Insights.
+Error rate, p95 latency, and active session count visible in real-time dashboard.
+NFR-17
+Maintainability
+The vendor shall provide full source code to REC on project completion, stored in an agreed Git repository.
+GitHub or Azure DevOps; REC to have admin access.
+NFR-18
+Maintainability
+Third-party package updates shall be applied by the vendor within the maintenance retainer as part of monthly scheduled maintenance.
+Documented in SLA; critical security patches applied within 72 hours.
+
+5. Integration Requirements
+
+This section defines all system-to-system integration points. Each integration has an owner responsible for providing credentials and confirming readiness before development begins.
+
+System
+Direction
+Purpose
+Owner
+Pre-requisite
+Dynamics 365
+Bi-directional
+Member validation, contact write-back, booking records, sync status
+David Dodd / London Systems
+D365 API credentials, field mapping doc, London Systems service request raised
+Stripe
+Outbound (API) + Inbound (Webhook)
+Payment processing, refunds, reconciliation
+David Dodd (Finance sign-off)
+Stripe production account created; webhook endpoint registered
+REC CS5 Website
+Inbound (iframe embed)
+Event calendar widget display on rec.uk.com
+Mike Clegg
+CS5 CMS team to whitelist iframe origin; postMessage permissions confirmed
+Microsoft Entra ID
+Inbound (OAuth/OIDC)
+SSO for all REC staff admin portal logins
+London Systems
+App registration in Entra ID tenant; redirect URIs configured
+Azure (Hosting)
+Infrastructure
+App hosting, PostgreSQL, Blob Storage, Key Vault, App Insights
+David Dodd / London Systems
+Azure subscription confirmed; resource group and naming conventions agreed
+OpenAI API
+Outbound
+AI event creation assistant (Phase 2); Video Transcription App summarisation
+David Dodd
+OpenAI API key provisioned; usage limits set
+Mux
+Outbound
+Video upload and audio extraction for Transcription App
+David Dodd
+Mux account and API tokens provisioned; webhook endpoint registered
+Cloudinary
+Outbound
+Fallback video processing for Transcription App
+David Dodd
+Cloudinary account and API credentials provisioned
+
+6. Data Requirements
+
+6.1 Core Data Entities
+The following table summarises the primary data entities the platform must manage, their key attributes, and data governance considerations.
+
+Entity
+Key Attributes
+Event
+ID, title, type/category, description, start/end date-time, venue/online link, capacity, status (draft/published/cancelled), template reference, series parent.
+Registration Type
+ID, event ID, name (Member/Non-Member/etc.), price, capacity allocation, visibility (public/private), custom field schema.
+Booking
+ID, event ID, delegate ID, registration type, status (confirmed/waitlisted/cancelled), payment status, Stripe payment intent ID, amount, created/modified timestamps.
+Delegate
+ID, first name, last name, email, organisation, phone, Dynamics 365 contact ID (if matched), member status, custom field responses, GDPR consent flags, erasure timestamp.
+Payment
+ID, booking ID, Stripe charge ID, amount, currency, VAT, status, refund amount, refund timestamp, reconciled flag.
+Email Log
+ID, booking ID, delegate ID, template name, trigger event, sent timestamp, delivery status, open/click status.
+Audit Log
+ID, user ID, action, entity type, entity ID, old value, new value, timestamp, IP address.
+Check-in Record
+ID, booking ID, event ID, staff user ID, method (QR/manual), timestamp, sync status.
+
+6.2 PII Inventory & Data Classification
+GDPR Notice
+All fields marked as PII must be handled in accordance with the UK GDPR (UK Data Protection Act 2018). The vendor must provide a completed data map and Data Processing Agreement (DPA) before any production data is processed.
+
+Data Field
+Classification & Retention Rule
+First Name, Last Name
+PII — High sensitivity. Required for booking. Erasure on GDPR request.
+Email Address
+PII — High sensitivity. Primary key for CRM matching. Erasure on GDPR request.
+Phone Number
+PII — Medium sensitivity. Optional collection. Erasure on GDPR request.
+Organisation
+Non-PII. Retained for reporting.
+Dietary Requirements
+PII — Special Category (potential health data). Collect only for in-person events. Deleted post-event within 30 days.
+Accessibility Needs
+PII — Special Category. Collect only where operationally required. Deleted post-event within 30 days.
+Payment Data
+PCI scope — handled exclusively by Stripe. Not stored on REC systems.
+IP Address (audit logs)
+PII — Low sensitivity. Retained for 12 months for security audit purposes.
+
+6.3 Data Migration Requirements
+	•	Cvent export format to be confirmed (CSV preferred; API if CSV not available).
+	•	Migration scope: events and registrations from 1 January 2022 to migration date.
+	•	Delegate records to be de-duplicated against Dynamics 365 on email address.
+	•	Payment history records migrated for reference only (no Stripe re-processing of historical transactions).
+	•	Pre-migration data quality report required from vendor; REC Events team to validate sample of 50 records.
+	•	Go/no-go migration sign-off authority: Karen (Events) + David Dodd.
+
+
+7. Acceptance Criteria & Go-Live Sign-Off
+
+7.1 Go-Live Readiness Checklist
+Requirement
+Sign-Off
+All MUST functional requirements implemented and tested (FR-01 to FR-64, VT-01 to VT-07)
+☐ Events team UAT sign-off
+Payment flow tested end-to-end in Stripe production (not test mode)
+☐ Finance sign-off
+Dynamics 365 CRM integration tested with production data (sample of 50 bookings)
+☐ David Dodd sign-off
+CS5 iframe widget tested on REC website staging environment
+☐ Mike Clegg sign-off
+Automated email workflows tested (all 5 trigger types)
+☐ Events / Marketing sign-off
+Mobile app submitted and approved on App Store and Google Play
+☐ Vendor confirmation
+PCI-DSS SAQ-A compliance documentation provided
+☐ Finance / Legal sign-off
+GDPR data map and DPA signed with vendor
+☐ DPO sign-off
+Penetration test completed; critical and high findings remediated
+☐ David Dodd sign-off
+Cvent data migration validated (record count reconciliation <0.5% discrepancy)
+☐ Karen sign-off
+Staff training delivered (Events team, Check-in staff)
+☐ Karen sign-off
+Rollback plan documented and tested
+☐ Vendor + David Dodd
+SLA and maintenance contract signed
+☐ David Dodd / Finance
+
+7.2 Key Milestones
+Milestone
+Target Date
+Project Kick-off (vendor confirmed)
+March 2026 (per vendor proposal)
+Design & Architecture Sign-off
+Week 3 (late March 2026)
+CRM Integration Config Ready
+Week 5 (London Systems action)
+Platform Alpha — Core Features
+Week 10 (early May 2026)
+UAT Start
+Week 14 (mid June 2026)
+Cvent Data Migration
+Week 18 (mid July 2026)
+Soft Launch / Pilot
+Week 19 (late July 2026)
+Full Go-Live
+Week 21 (early August 2026)
+Post-Launch Review
+30 days post go-live
+
+Sign-Off Block
+By approving this document, stakeholders confirm that the requirements accurately represent the needs of their team and that they accept responsibility for raising changes through the agreed change management process.
+
+David Dodd (Technology & Digital): ________________   Date: _________
+Karen (Events Team): ________________   Date: _________
+Mike Clegg (Web & Digital): ________________   Date: _________
+Finance Representative: ________________   Date: _________
+
+8. Glossary
+
+Term
+Definition
+Azure
+Microsoft cloud platform. Hosting environment for the REC Event Platform (App Service, PostgreSQL, Blob Storage, Key Vault, Application Insights).
+Cvent
+The incumbent event management SaaS platform being replaced by this custom-built solution.
+CS5
+REC's current Content Management System and website platform (rec.uk.com). The event calendar widget will be embedded here via iframe.
+CPD
+Continuing Professional Development. REC runs CPD-accredited training events for members. Post-event CPD certificates may be auto-generated.
+D365 / Dynamics 365
+Microsoft Dynamics 365 CRM — REC's system of record for member, contact, and commercial data.
+DPA
+Data Processing Agreement — a contractual requirement under UK GDPR between REC (data controller) and the vendor (data processor).
+Entra ID
+Microsoft's cloud identity platform (formerly Azure Active Directory). Used for SSO authentication of REC staff into the admin portal.
+GPT-4o
+OpenAI's multimodal large language model. Used in the Video Transcription App for summarisation and Q&A.
+iframe
+An HTML element that embeds content from one URL within a page at another URL. Used to surface the event calendar on the CS5 website without rebuilding the CS5 CMS.
+London Systems
+REC's managed IT service provider. Responsible for Entra ID configuration, Azure provisioning support, and Dynamics 365 infrastructure.
+MoSCoW
+Prioritisation method: MUST have, SHOULD have, COULD have, WON'T have (this phase). Used to classify functional requirements.
+Mux
+Video infrastructure platform used as the primary channel for video upload and audio extraction in the Video Transcription App.
+OpenAI Whisper
+OpenAI's speech-to-text transcription model. Used in the Video Transcription App for audio transcription.
+PCI-DSS
+Payment Card Industry Data Security Standard. SAQ-A is the simplified self-assessment questionnaire applicable when using a hosted payment page (Stripe).
+PII
+Personally Identifiable Information. Data that can identify an individual — subject to UK GDPR controls.
+RBAC
+Role-Based Access Control. A security model where access permissions are tied to defined roles rather than individual users.
+React Native
+Cross-platform mobile framework (Facebook/Meta) used to build the iOS and Android check-in app from a single codebase.
+Stripe
+Payment processing platform. Used as the exclusive card payment gateway. PCI-DSS compliant; no card data stored on REC systems.
+TLS
+Transport Layer Security. Encryption protocol for data in transit. TLS 1.2 minimum required.
+UAT
+User Acceptance Testing. Formal testing phase by Karen and Events team to validate that all requirements are met before go-live sign-off.
+Umbrella Event
+A parent event record that groups multiple child sessions (e.g. a webinar series). Delegates register to the umbrella or individual sessions.
+WCAG 2.1 AA
+Web Content Accessibility Guidelines 2.1 Level AA. International standard for web accessibility. Required for the delegate-facing registration flow.
+Whisper
+See OpenAI Whisper above.
+
+— End of Document —

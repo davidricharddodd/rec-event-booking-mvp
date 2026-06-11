@@ -1,0 +1,534 @@
+REC Event Booking Platform & Video Transcription App
+
+Product Backlog — Developer Edition with Vibe Code Briefs
+Author: David Dodd, R |  Generated: June 2026  |  Source: Discovery Transcript + Spec v1.0
+Overview
+This backlog covers the REC Event Booking Platform — a custom-built replacement for Cvent, commissioned from an external vendor. The backlog was generated from the Event Booking System requirements specification (v1.0, January 2026), the vendor discovery and proposal transcript.
+The Event Booking Platform backlog contains 18 new features across 10 epics: Event Architecture, Registration & Checkout, Payment Processing, CS5 Website Integration, Email Communications, Reporting & Dashboard, Mobile Applications (Staff + Attendee), Dynamics CRM Integration, AI Features, Data Migration, and GDPR/Security. The total estimated build timeline confirmed by the vendor is 21 weeks, with Figma designs in Weeks 1-4, development Weeks 5-16, and testing/deployment Weeks 17-21, targeting go-live end of July / early August.
+The Video Transcription App backlog contains 1 bug fix, 5 new features, and 3 enhancements. The critical path for the transcription app is: FIX-01 (Mux static renditions), then FEAT-20 (upload), FEAT-21 (state machine), FEAT-22 (transcription), FEAT-23 (summarisation), FEAT-24 (Q&A). ENH-01 through ENH-03 are iterative improvements. Key open dependencies (detailed in the Dependencies table) include Dynamics 365 API access from London Systems, Cvent data export, Microsoft Entra ID SSO configuration, and REC App Store developer accounts.
+
+Backlog Summary
+Ref
+Product
+Title
+Type
+FEAT-01
+REC Event Platform
+Standalone & Umbrella/Series Event Architecture
+NEW FEATURE
+FEAT-02
+REC Event Platform
+Event Template System
+NEW FEATURE
+FEAT-03
+REC Event Platform
+Registration Types, Tiered Pricing & Capacity Control
+NEW FEATURE
+FEAT-04
+REC Event Platform
+Multi-Event Basket & Single Checkout
+NEW FEATURE
+FEAT-05
+REC Event Platform
+CS5 Website Event Calendar Widget (Embedded)
+NEW FEATURE
+FEAT-06
+REC Event Platform
+Stripe Payment Gateway Integration
+NEW FEATURE
+FEAT-07
+REC Event Platform
+Automated Email Workflows
+NEW FEATURE
+FEAT-08
+REC Event Platform
+Real-Time Event Management Dashboard
+NEW FEATURE
+FEAT-09
+REC Event Platform
+Attendance, Revenue & Registration Reporting
+NEW FEATURE
+FEAT-10
+REC Event Platform
+Staff Check-In Mobile App (iOS & Android)
+NEW FEATURE
+FEAT-11
+REC Event Platform
+Attendee Mobile App (Combined App — Phase 2)
+NEW FEATURE
+FEAT-12
+REC Event Platform
+Dynamics 365 CRM Bi-Directional Integration
+NEW FEATURE
+FEAT-13
+REC Event Platform
+Event Type Categorisation
+NEW FEATURE
+FEAT-14
+REC Event Platform
+AI-Powered Event Creation & Conflict Detection
+NEW FEATURE
+FEAT-15
+REC Event Platform
+Cvent Data Migration
+NEW FEATURE
+FEAT-16
+REC Event Platform
+QR Code Badge Scanning (Annual Conference)
+NEW FEATURE
+FEAT-17
+REC Event Platform
+Role-Based Access Control & Microsoft SSO
+NEW FEATURE
+FEAT-18
+REC Event Platform
+GDPR Compliance & Data Security
+NEW FEATURE
+FIX-01
+Video Transcription App
+Mux Static Renditions Status Handling Bug
+BUG FIX
+FEAT-20
+Video Transcription App
+Dual Video Upload — Mux & Cloudinary
+NEW FEATURE
+FEAT-21
+Video Transcription App
+Resumable Audio Extraction State Machine
+NEW FEATURE
+FEAT-22
+Video Transcription App
+OpenAI Whisper Transcription
+NEW FEATURE
+FEAT-23
+Video Transcription App
+AI-Powered Summarisation
+NEW FEATURE
+FEAT-24
+Video Transcription App
+Q&A Chat Interface on Transcripts
+NEW FEATURE
+ENH-01
+Video Transcription App
+Webhook-Based Mux Processing (Replace Polling)
+ENHANCEMENT
+ENH-02
+Video Transcription App
+Batch Video Processing
+ENHANCEMENT
+ENH-03
+Video Transcription App
+Transcript & Summary Export Options
+ENHANCEMENT
+
+
+Product 1 — REC Event Booking Platform
+The following 18 feature cards cover the full scope of the custom-built Cvent replacement. Features are ordered by dependency — FEAT-01 through FEAT-03 (event architecture, templates, registration types) are foundational and must ship before FEAT-04 onwards. FEAT-12 (Dynamics integration) should be started in parallel from Week 5. FEAT-15 (Cvent migration) is on the critical path for go-live and must complete before Week 21.
+
+  FEAT-01    [NEW FEATURE]    Standalone & Umbrella/Series Event Architecture
+User Story
+As a REC event manager, I want to create both standalone single-date events and umbrella/series events with multiple occurrences under one event page, So that I can manage REC's entire programme—from one-off conferences to recurring training courses—from a single platform.
+Background & Context
+The existing Cvent platform is being replaced with a fully owned custom solution. REC runs both individual events (conferences, seminars) and recurring training series. Karen confirmed in the discovery call that umbrella events need a single event page where customers select their preferred date.
+Each date in a series must be independently trackable for capacity and attendance. The spec requires reporting to distinguish individual date performance from overall series performance. This feature is the foundation upon which templates (FEAT-02), registration (FEAT-03), and the mobile check-in app (FEAT-10) all depend.
+Acceptance Criteria
+✓  Event manager can create a Standalone event with a single date, time, location, and capacity.
+✓  Event manager can create an Umbrella/Series event with multiple date instances, all displayed under one event URL.
+✓  Each date within an umbrella event maintains its own: capacity limit, sold count, attendee list, and check-in records.
+✓  Customer-facing booking page for an umbrella event shows all available dates with remaining spaces; customer selects preferred date during registration.
+✓  Platform enforces no-overbooking: dates at capacity display as "Full" and cannot be selected.
+✓  Admin reporting shows metrics both per-date (e.g., "Session 3 — 45/50 booked") and at series level (aggregate totals).
+✓  Event type (Standalone or Umbrella) is displayed as a visible badge in the admin dashboard and event list.
+✓  If the last date in an umbrella series passes, the event is automatically archived and removed from the public calendar widget.
+Vibe Code Brief
+Build the event data model in PostgreSQL. Events table: {id, type: enum(standalone, umbrella), title, description, category_id, template_id, status: enum(draft, published, archived), created_at}. Event_dates table: {id, event_id, start_datetime, end_datetime, venue_id, capacity, sold_count, status: enum(open, full, cancelled)}. POST /events creates event + dates in a single transaction. GET /events/:id returns event with dates array. On the Next.js event page, conditionally render a single date display (standalone) or a DateSelector component (umbrella) showing all dates as selectable cards with capacity badges. Do not modify payment or email flows in this sprint. Verify: create both types, confirm each date tracks capacity independently, confirm full dates show as unselectable.
+
+
+  FEAT-02    [NEW FEATURE]    Event Template System
+User Story
+As an event manager, I want to save reusable event templates with pre-configured settings, So that I can create a standard event in under 5 minutes rather than re-entering all configuration from scratch.
+Background & Context
+Karen confirmed in the discovery call that having preset settings to "fast track event creation" is essential. The current Cvent workflow relies heavily on templates. Templates should capture all standard event configuration — branding, email sequences, registration types, and page layout.
+The vendor confirmed template support with the ability to duplicate and update only dates, enhanced by the AI prompt feature (FEAT-14). Critically, editing a template must not retroactively alter events already created from it — each event must be independent once created.
+Acceptance Criteria
+✓  Event manager can create a named template capturing: event type, registration types, pricing defaults, capacity defaults, email sequences, branding settings, and page layout.
+✓  Template library shows all available templates with name, last-used date, and a preview badge indicating event type.
+✓  Creating a new event from a template pre-fills all form fields; manager only needs to supply date(s) and final title.
+✓  A template can be duplicated to create a variant without modifying the original.
+✓  Templates can be organisation-wide (all managers) or user-specific (private); scope is set at creation.
+✓  Editing a saved template does not retroactively change events already created from it (event configs are snapshotted at creation).
+✓  New event from template to "ready to publish" is achievable in under 5 minutes for a standard event.
+✓  Deleting a template is blocked (with a warning) if any live future events were created from it.
+Vibe Code Brief
+Create a templates table: {id, name, type, config_json JSONB, scope: enum(global, user), created_by, created_at}. Config JSONB stores the complete event creation payload. POST /templates creates; GET /templates lists (filtered by scope=global OR created_by=currentUser); PUT /templates/:id updates (check no live events use it before allowing changes); POST /events/from-template/:id creates a new event pre-populated with template values — the event stores a snapshot of the config, not a live FK. Frontend: add a "Use Template" modal to the event creation page with a searchable template browser. On template select, populate all form fields and show a "template applied" banner. AI prompt duplication (FEAT-14) should call this endpoint internally. Do not connect AI in this sprint. Verify: create template, spawn two events, edit template, confirm neither event is changed.
+
+
+  FEAT-03    [NEW FEATURE]    Registration Types, Tiered Pricing & Capacity Control
+User Story
+As an event manager, I want to define multiple registration types with independent pricing, capacity limits, and time-based pricing rules, So that REC can accurately apply membership-based pricing and prevent overbooking.
+Background & Context
+The spec requires support for registration types including Member, Non-Member, Student, Early Bird, and VIP — each with its own price and capacity. Karen also confirmed in the call that recurring events can have updated price books applied. Early bird cutoff dates and discount codes are explicitly required.
+The Dynamics CRM integration (FEAT-12) will supply membership status in real time to validate which pricing tier a registrant qualifies for. This feature gates the basket and checkout flows (FEAT-04) as it determines what registrants can purchase.
+Acceptance Criteria
+✓  Unlimited registration types can be defined per event date, each with: name, price (in pence), capacity, visible_from, and visible_until dates.
+✓  Admin can configure early bird pricing with an automatic cutoff date/time; standard pricing is shown once the cutoff passes.
+✓  Discount and promotional codes can be created with: value (percent or fixed), max_uses, expiry date, and optionally scoped to specific events or registration types.
+✓  Group booking: admin can configure a minimum group size that triggers an automatic percentage discount.
+✓  Real-time capacity tracking: when a registration type reaches its limit, it displays as "Sold Out" and cannot be selected.
+✓  Customer-facing booking form shows remaining spaces per registration type (e.g., "8 spaces remaining").
+✓  When membership tier is retrieved from Dynamics CRM, the booking form automatically highlights eligible member-priced types.
+✓  Admin can manually override a registration type's capacity limit from the event management screen; override is logged to the audit trail.
+Vibe Code Brief
+Create registration_types table: {id, event_date_id, name, price_pence, capacity, sold_count, visible_from, visible_until, is_member_only}. Discount_codes table: {id, code, discount_type: enum(percent, fixed), value, max_uses, uses_count, expires_at, event_ids JSONB}. POST /registration-types creates types for an event date. At checkout, call GET /membership/:email to retrieve tier from Dynamics CRM (FEAT-12 integration) and filter eligible types. Apply discount: POST /discount/validate accepts {code, basket_total} and returns {valid, discount_amount}. Capacity enforcement: use a SELECT FOR UPDATE on registration_types.sold_count when incrementing at checkout to prevent race conditions. Admin override: PUT /registration-types/:id/capacity-override requires admin role, writes to audit_log. Frontend: render registration types as radio cards with price, remaining spaces badge, and a "Member" tag where applicable. Verify: create early bird type, advance past cutoff, confirm standard pricing shown; test sold-out state.
+
+
+  FEAT-04    [NEW FEATURE]    Multi-Event Basket & Single Checkout
+User Story
+As a customer, I want to add multiple events to a basket and complete payment in one transaction, So that I can book several REC events at once without re-entering my details and payment information for each one.
+Background & Context
+The spec mandates a persistent basket for logged-in users across browsing sessions. The vendor confirmed "a single checkout experience for RC customers." A single Stripe payment intent covers all basket items. Individual confirmation emails per event are required alongside a consolidated receipt.
+Basket abandonment tracking and recovery emails are in scope per the spec. This feature depends on FEAT-03 (registration types) for pricing and FEAT-06 (Stripe) for payment processing. If a basket item's event sells out before checkout is completed, the customer must be notified clearly.
+Acceptance Criteria
+✓  Logged-in customers can add events (with selected date and registration type) to a persistent basket from any event page.
+✓  Basket persists across browsing sessions (stored server-side, linked to user account).
+✓  Basket sidebar/page displays: event name, date, registration type, price, and a remove button for each item.
+✓  Single checkout flow processes all basket items in one Stripe PaymentIntent for the combined total.
+✓  On successful payment, individual confirmation emails are sent per event plus one consolidated receipt email for the full transaction.
+✓  If a basket item becomes sold out before checkout completes, the item is flagged with "No longer available" and checkout is blocked until the item is removed.
+✓  Basket abandonment: if an active basket has items but no checkout within 24 hours, a recovery email is automatically sent.
+✓  Order history in the customer account shows all individual bookings and the basket grouping they originated from.
+Vibe Code Brief
+Create baskets table: {id, user_id, status: enum(active, checked_out, abandoned), created_at} and basket_items: {id, basket_id, event_date_id, registration_type_id, price_pence_snapshot, status: enum(active, purchased, removed, sold_out)}. POST /basket/add validates availability first, then adds item. GET /basket returns current active basket. At checkout, create Stripe PaymentIntent for sum of all item price_pence_snapshots. On Stripe webhook payment_intent.succeeded: mark basket checked_out, create individual booking records, trigger per-event confirmation emails and consolidated receipt. Availability re-check at checkout start: if any item is sold out, return 409 with sold_out_items list. Abandonment: nightly cron marks baskets active for >24h as abandoned and queues recovery email via FEAT-07 email service. Frontend: floating basket icon with item count badge, slide-out drawer listing items, and "Checkout" button. Verify: add 2 events, checkout, confirm 3 emails sent (2 confirmations + 1 receipt).
+
+
+  FEAT-05    [NEW FEATURE]    CS5 Website Event Calendar Widget (Embedded)
+User Story
+As an event manager, I want published events to automatically appear on the REC website calendar with working dropdown filters, So that the website is always accurate without requiring manual CMS updates or CS5 developer involvement.
+Background & Context
+The current CS5 integration is broken — the legacy API-driven dropdown filters no longer work and have been replaced with a plain text Cvent widget. Karen confirmed this as a pain point: making website changes for the event calendar requires CS5 intervention each time.
+The vendor proposed a fully self-contained iframe component rendering independently of CS5 CMS logic. The widget handles all filtering internally so CS5 "doesn't need to worry about anything." This is the correct architecture: the platform renders a contained UI block that CS5 simply embeds with a one-line HTML snippet.
+Acceptance Criteria
+✓  Published events appear in the CS5 calendar widget within 5 minutes of being marked as Published in the platform.
+✓  The widget renders inside an iframe embedded on CS5 with no dependency on CS5 CMS logic or rebuild steps.
+✓  Customers can filter events by: category/type, date range, location, and availability status — all driven from within the iframe.
+✓  Each event listing links directly to the event registration page on the event platform.
+✓  Widget is fully responsive: correct display on mobile, tablet, and desktop.
+✓  Widget branding (colours, fonts) matches REC brand guidelines and is configurable by the event manager without CS5 involvement.
+✓  Unpublished events or events whose last date has passed are automatically removed from the widget.
+✓  CS5 team can embed the widget using a single HTML snippet with no API keys in the frontend code (auth is on the served endpoint).
+Vibe Code Brief
+Build a GET /widget/events endpoint that returns published future events as JSON (no authentication required; events are public). Create a standalone Next.js page at /embed/calendar that is designed to be iframed — no navigation, headers, or footers. The page fetches from /widget/events on load and re-fetches every 5 minutes. Support URL query params: ?category=training&location=london&from=2026-01-01. Render a responsive card grid: event title, date chip, category badge, available-spaces indicator, Book Now CTA. Category filter widget reads available categories from GET /categories endpoint and builds a dropdown. On publish, the event status change triggers a cache invalidation for the /widget/events endpoint (use Next.js revalidatePath or a Redis cache bust). Provide CS5 team with: <iframe src="https://events.rec.uk.com/embed/calendar" width="100%" height="700" frameborder="0" style="border:none;"></iframe>. Verify: publish an event, confirm it appears in the iframe within 5 minutes; test all filter combinations.
+
+
+  FEAT-06    [NEW FEATURE]    Stripe Payment Gateway Integration
+User Story
+As a customer, I want to pay for event registrations securely by card within the REC platform, So that I can complete my booking instantly without being redirected to a third-party payment site.
+Background & Context
+Stripe is the specified payment processor (confirmed in the spec Appendix A and in the vendor transcript: "the Stripe response will straight-away come into this platform" via webhooks). PCI compliance is non-negotiable. The system must support refunds, failed payment retries, and a full audit trail.
+Critically, the platform must never store raw card data. All card input is handled by Stripe-hosted Elements (SAQ A scope). Payment confirmation is event-driven via webhooks — bookings are only confirmed once Stripe confirms payment, not when the user submits the form.
+Acceptance Criteria
+✓  Customers pay using Stripe card input (Stripe PaymentElement); no custom card form is built.
+✓  Booking is confirmed only on receipt of a Stripe payment_intent.succeeded webhook — not on form submission.
+✓  Failed payments display a clear error message; customer can retry with the same or a different card without losing basket contents.
+✓  Admin can process full or partial refunds from the booking management screen; refund is initiated via Stripe API and reflected in the booking status immediately.
+✓  All transactions are logged: event, amount (pence), Stripe PaymentIntent ID, status, timestamp, user ID.
+✓  Platform stores only Stripe Customer IDs and PaymentIntent IDs — no raw card numbers or CVV data.
+✓  Stripe webhook signature is validated on every incoming webhook request (stripe.webhooks.constructEvent).
+✓  Payment status is visible on the event dashboard against each booking (Paid / Refunded / Pending / Failed).
+Vibe Code Brief
+Integrate Stripe using the stripe Node.js SDK and @stripe/stripe-js on the frontend. POST /payments/create-intent creates a PaymentIntent for basket total (pence) and returns client_secret. Frontend: render Stripe PaymentElement component — never build a custom card input. On Stripe webhook POST /payments/webhook: verify signature, handle payment_intent.succeeded (confirm booking, trigger emails, update basket), handle payment_intent.payment_failed (notify user). Refund: POST /admin/bookings/:id/refund calls stripe.refunds.create({payment_intent: booking.stripe_pi_id, amount: optional_partial_amount}). Store payment_records table: {id, basket_id, stripe_payment_intent_id, amount_pence, status, refund_amount_pence, created_at}. Ensure idempotency: check payment_records for existing PI ID before creating duplicate records on webhook retry. Verify: full payment flow, partial refund, failed card retry, webhook signature rejection.
+
+
+  FEAT-07    [NEW FEATURE]    Automated Email Workflows
+User Story
+As an event manager, I want automated emails sent to registrants at key lifecycle points with personalised content and calendar invites, So that attendees are always informed without me sending manual emails for every booking.
+Background & Context
+The spec lists six required automated email types: registration confirmation (with .ics calendar invite), payment receipt, pre-event reminders, post-event follow-up, waitlist notifications, and cancellation confirmation. The vendor offered two email infrastructure options: use the existing Dynamics 365 email templates (preferred, as templates already exist) or build a native SMTP/SendGrid integration.
+Both options require a flexible job queue approach where emails are scheduled at booking time (e.g., reminder = event_date - 7 days). Karen noted that personalisation tokens are essential. This feature depends on FEAT-06 (payment confirmation triggers the first emails) and optionally FEAT-12 (Dynamics integration for email delivery).
+Acceptance Criteria
+✓  Registration confirmation email sent immediately on payment confirmation, containing: event name, date/time, location, registration type, and an .ics calendar invite attachment.
+✓  Payment receipt email sent as a separate message with itemised cost breakdown.
+✓  Pre-event reminder emails sent at configurable intervals (admin-configurable per event; defaults: 7 days and 1 day before event).
+✓  Post-event thank you email sent within 2 hours of event end date/time.
+✓  Waitlist notification sent automatically when a space in the registrant's chosen type becomes available.
+✓  Cancellation confirmation sent immediately on booking cancellation, including refund amount and timeline.
+✓  All email templates support personalisation tokens: {first_name}, {event_name}, {event_date}, {registration_type}, {venue_name}, {booking_reference}.
+✓  Email sending failures are logged; failed emails retry up to 3 times before being flagged for manual review.
+Vibe Code Brief
+Build an email_jobs table: {id, type: enum(confirmation, receipt, reminder, post_event, waitlist, cancellation), booking_id, send_at, status: enum(pending, sent, failed), attempts}. At booking confirmation, INSERT jobs for: confirmation (now), receipt (now), reminder_7d (event_date - 7 days), reminder_1d (event_date - 1 day), post_event (event_end + 2 hours). A background worker (cron every 2 minutes) selects pending jobs WHERE send_at <= NOW(), calls the email dispatch function, and updates status. For Dynamics email delivery: call the Dynamics 365 Email API using an existing template ID + substitution tokens. For .ics generation: use the ical-generator npm package — create an event with DTSTART, DTEND, SUMMARY, LOCATION, and attach as base64 to the confirmation email. For fallback/native SMTP: use nodemailer with the configured SMTP server. Log all sends to email_send_log table. Verify all 6 email types trigger and arrive with correct personalisation tokens.
+
+
+  FEAT-08    [NEW FEATURE]    Real-Time Event Management Dashboard
+User Story
+As an event manager, I want a real-time dashboard showing all events, live booking counts, revenue, and a needs-attention panel, So that I can monitor event health at a glance without running individual reports.
+Background & Context
+The spec requires a calendar view, event status indicators, registration-vs-capacity counts, revenue per event, and a metrics summary. Karen currently uses the Cvent organiser app to check booking counts; this dashboard replaces that workflow and must be accessible from both desktop and tablet. The vendor confirmed "a real time dashboard for the booking system."
+The dashboard is the primary admin landing screen. It must surface events needing attention (low registrations approaching, events approaching deadline) proactively. Full reporting detail is covered in FEAT-09; this feature is the live operational view.
+Acceptance Criteria
+✓  Dashboard default view is a calendar layout showing all scheduled events; switchable to a list/grid view.
+✓  Each event card shows: event name, date(s), registered count / capacity (with a colour-coded progress bar), revenue total, and a status badge (Draft / Upcoming / Live / Past / Cancelled).
+✓  Metrics row at top shows: total registrations today, this week, this month, and total revenue this month.
+✓  "Needs Attention" panel surfaces: events with registrations below 50% of capacity within 14 days of event date, and events with outstanding unconfirmed payments.
+✓  Clicking an event card opens a detail slide-out: full attendee list, payment status per attendee, and a "Email Attendees" button.
+✓  Dashboard data refreshes automatically every 30 seconds without a full page reload.
+✓  Filters allow narrowing by: event category, date range, event manager (admin role only), and status.
+✓  Dashboard is usable on tablet (minimum 768px viewport) for use by staff during events.
+Vibe Code Brief
+Build GET /dashboard/summary API endpoint: returns event list with computed stats (sold_count, capacity, revenue_pence), summary metrics, and needs_attention array. Compute via PostgreSQL queries: JOIN event_dates with registration_types, bookings, and payments tables. For real-time updates: use a polling hook in React (useEffect with setInterval 30s) calling the summary endpoint; display a "Last updated: X seconds ago" indicator. Dashboard layout in Next.js: top row of 4 StatCard components, below that a CalendarView / ListView toggle, then EventGrid. Needs-attention logic: WHERE event_date BETWEEN NOW() AND NOW()+INTERVAL 14 DAYS AND sold_count/capacity < 0.5. Use Recharts for the capacity progress bars (LinearProgress equivalent). Detail slide-out: GET /events/:id/attendees with payment_status filter. Do not replace FEAT-09 reporting — this is operational view only. Verify: book a new attendee and confirm dashboard reflects the change within 30 seconds.
+
+
+  FEAT-09    [NEW FEATURE]    Attendance, Revenue & Registration Reporting
+User Story
+As an event manager or finance team member, I want detailed reports on registrations, attendance, no-shows, and revenue with export capability, So that I can measure event performance and reconcile financial records.
+Background & Context
+The spec has a comprehensive reporting section covering revenue by event/date range/registration type, outstanding payments, refund history, and export to CSV/Excel/PDF. Karen noted that tracking people who booked but didn't attend is important — these are candidates for follow-up emails and feedback forms.
+The finance team additionally requires a breakdown by payment method and a full refund history report. Reports must handle up to 10,000 registrations per query within 5 seconds. Report results should be cached to avoid repeated heavy DB queries.
+Acceptance Criteria
+✓  Event-level report shows: total registrations, checked-in (attended), no-shows, cancellations, total revenue, refunds, and net revenue.
+✓  Cross-event report is filterable by: date range, event category, registration type, and event manager.
+✓  Revenue report breaks down by: registration type, payment method, and individual event.
+✓  No-show report lists individual attendees not checked in, with a one-click option to add them to a manual email segment.
+✓  All reports export to CSV and Excel (.xlsx) with formatted headers.
+✓  Refund history report includes: original booking date, refund date, amount, Stripe reference, and optional reason code.
+✓  Registration trend chart shows weekly registration volumes for a selected event or date range.
+✓  Reports load within 5 seconds for queries covering up to 10,000 registrations.
+Vibe Code Brief
+Create a /reports API module: GET /reports/events/:id/summary, GET /reports/events/cross?from&to&category, GET /reports/revenue?from&to, GET /reports/no-shows/:event_date_id, GET /reports/refunds?from&to. Each endpoint runs PostgreSQL aggregation queries. For performance: add composite indexes on bookings(event_date_id, status) and payments(created_at, status). Cache results for 5 minutes using node-cache or Redis. For Excel export: use the exceljs npm package to generate .xlsx with styled headers (bold, background colour). For CSV: use papaparse unparse. Frontend: tabbed report interface using React — Date range pickers (react-datepicker), filter dropdowns, a sortable data table (react-table), Export CSV button, Export Excel button. No-show report: checkbox per row, "Add to email segment" CTA. Trend chart: recharts LineChart with week-by-week registration data. Verify: cross-event report for 6 months of data, confirm no-show count matches manual count for a test event.
+
+
+  FEAT-10    [NEW FEATURE]    Staff Check-In Mobile App (iOS & Android)
+User Story
+As a REC events staff member, I want to check in delegates on the day of an event using a mobile app, So that I can efficiently manage event arrivals without needing a laptop or access to the full web platform.
+Background & Context
+Karen confirmed that staff currently use Cvent's "On Arrival" app: see the attendee list, tap to check in, data syncs back to Cvent. This is the priority mobile feature — Karen stated staff check-in is "more urgent" than the attendee app. The app must support offline mode for venues with poor connectivity.
+For most events, tap-to-check-in against a name list is sufficient. For the annual conference, QR code scanning is required (covered in FEAT-16). The vendor confirmed the app will be React Native, available on iOS App Store and Google Play. Staff and attendee views will be in the same app with role-based routing (FEAT-11).
+Acceptance Criteria
+✓  Staff log in with REC credentials (via Entra ID SSO — FEAT-17) and see a list of upcoming events assigned to their region.
+✓  Selecting an event shows the attendee list for that specific date, searchable by name.
+✓  Tapping an attendee's name row toggles check-in status (checked-in shown with a green tick; toggling reverses it).
+✓  Check-in status syncs to the platform in real-time; checked-in counts appear on the web dashboard within 30 seconds.
+✓  App functions in offline mode: check-ins are queued locally and sync automatically when connectivity is restored.
+✓  App is published and available on iOS App Store and Google Play under the REC organisation developer accounts.
+✓  Staff can add a walk-in attendee (name, email, registration type) directly from the app; this creates a booking record on the platform.
+✓  App shows event summary stats: total registered, checked-in count, and remaining expected attendees.
+Vibe Code Brief
+Build with React Native. Single app with role-based navigation: on login, API returns user.role (staff | attendee | admin) and routes to the appropriate stack. Staff stack: EventList screen → AttendeeList screen → optionally QRScanner (FEAT-16). API endpoints: GET /app/events (staff upcoming events), GET /app/events/:id/attendees (list with checkin_status), POST /app/checkins (create or toggle check-in), POST /app/walkins (create booking + immediate check-in). Offline: use @react-native-async-storage/async-storage to queue POST /app/checkins payloads when network is unavailable; use NetInfo from @react-native-community/netinfo to detect connectivity changes and flush the queue on reconnect. UI: EventList with date chips and registration count; AttendeeList as a FlatList with search input; each row has name, registration type, and a CheckIn toggle button with colour state (grey = not checked in, green = checked in). Do not build attendee features in this sprint — that is FEAT-11. Verify: offline check-ins sync correctly on reconnect.
+
+
+  FEAT-11    [NEW FEATURE]    Attendee Mobile App (Combined App — Phase 2)
+User Story
+As a REC event attendee, I want an REC mobile app showing my bookings, event day information, agenda, and speaker profiles, So that I have everything I need for any REC event in one place.
+Background & Context
+The transcript discussion proposed combining the staff check-in and attendee views in one React Native app with role-based routing — "you don't need to float two separate applications." David noted this gives REC "an RC app" that could eventually host content and membership portal features.
+Karen confirmed similarity to the Eventbrite attendee experience: view all bookings, receive push notifications on the event day. For most events the info is basic; for the annual conference there are floor maps, speaker profiles, agenda, and exhibitor booths. This feature is Phase 2 — staff check-in (FEAT-10) ships first. Sponsor/exhibitor lead capture is deferred to FEAT-21.
+Acceptance Criteria
+✓  Attendees log in with their REC account and see all upcoming and past bookings.
+✓  Each booking shows: event name, date/time, location, registration type, and a QR code for check-in (FEAT-16).
+✓  Push notifications can be sent to all attendees of a specific event from the platform admin.
+✓  Event detail view shows: agenda/schedule, speaker bios, venue map (image), and sponsor/exhibitor information.
+✓  Staff and attendee views are the same React Native app; logged-in user's role determines navigation stack.
+✓  App is published to iOS App Store and Google Play under the REC organisation accounts.
+✓  Floor maps, agenda, and speaker content for the annual conference are uploaded via the platform admin and rendered in the app.
+✓  Attendee app content is included in the base booking — no additional in-app purchase required.
+Vibe Code Brief
+Extend the React Native app from FEAT-10 with an attendee navigation stack. On login, route role attendee to: Home (upcoming bookings), BookingDetail (with QR code + event content), Notifications, and Account. Backend: GET /app/my-bookings, GET /app/events/:id/detail (returns agenda JSON, speaker_bios JSON, floor_map_url, sponsors array). Build a simple Event Content admin section: upload agenda (JSON schedule format), speaker bios (name, photo URL, bio text), venue floor map (image upload to Azure Blob Storage → return URL). Push notifications: use Firebase Cloud Messaging (FCM) via the @react-native-firebase/messaging package. Server-side: POST /admin/events/:id/notify sends to all attendee device tokens registered for that event. Device tokens stored in user_devices table: {user_id, fcm_token, platform, updated_at}. Defer sponsor/exhibitor lead capture to FEAT-21. Verify: attendee login shows bookings, push notification received on test device, floor map image renders.
+
+
+  FEAT-12    [NEW FEATURE]    Dynamics 365 CRM Bi-Directional Integration
+User Story
+As the REC events and membership team, I want the event platform to automatically sync registration, attendance, and payment data with Dynamics 365 CRM, So that the CRM holds a complete, up-to-date view of every customer's engagement with REC events.
+Background & Context
+Dynamics 365 is REC's system of record. The vendor highlighted this as a key differentiator: "your data at the moment in Cvent within Dynamics are very loosely coupled." With tight integration, membership status flows from Dynamics to control pricing, and registration/attendance/payment flows back to enable cross-selling (e.g., converting event attendees to professional members).
+The spec requires real-time or near-real-time sync (max 15-minute delay). Field mapping documentation must be produced as a project deliverable. The REC managed IT provider (London Systems) manages the Dynamics environment and will need to provide API credentials and approve the integration architecture.
+Acceptance Criteria
+✓  New registrant data is pushed to Dynamics as an upsert on the Contact entity, matched on email address.
+✓  Each booking creates an Event Registration record in Dynamics linked to the Contact and the Event entities.
+✓  Attendance (check-in) status syncs to Dynamics within 15 minutes of being recorded in the staff app.
+✓  Payment transactions sync to Dynamics with: amount, status, Stripe PaymentIntent reference, and booking ID.
+✓  Membership tier/status is retrieved from Dynamics at registration time to present eligible pricing tiers (used by FEAT-03).
+✓  Sync failures are logged and retried up to 3 times with exponential backoff; persistent failures trigger an alert email to the platform admin.
+✓  Duplicate prevention: email is the primary matching key; if multiple Dynamics contacts share an email, a conflict is flagged for manual review.
+✓  Field mapping document is produced and maintained in the project wiki, mapping every synced field in both directions.
+Vibe Code Brief
+Build a Dynamics integration service in Node.js using the Dynamics 365 Web API (OAuth 2.0 via @azure/msal-node). On booking creation, call PATCH /contacts(emailaddress1='{email}') for upsert, then POST /rec_eventregistrations. On check-in, PATCH the registration record with rec_attended=true. For membership lookup: GET /contacts?$filter=emailaddress1 eq '{email}'&$select=rec_membershiptier — cache for 30 minutes. Create sync_log table: {id, direction: enum(to_crm, from_crm), entity_type, entity_id, crm_id, status, attempts, error, created_at}. Retry worker: every 10 minutes, SELECT failed sync_log entries WHERE attempts < 3 and re-attempt. Alert email on 3rd failure. For conflict detection: if GET contacts returns >1 result, write to conflict_log table and flag in admin dashboard. Do not use middleware like Zapier — direct Web API only. Verify: create booking, confirm Contact and EventRegistration appear in Dynamics sandbox within 5 minutes.
+
+
+  FEAT-13    [NEW FEATURE]    Event Type Categorisation
+User Story
+As an event manager, I want to assign events to categories such as Conference, Training, Qualification, or Webinar, So that events are routed to the correct section of the REC website and can be filtered and reported on by type.
+Background & Context
+Karen explicitly raised this in the transcript: "We'll be using this for events and for training — would you be able to tell it which are events for the events web page and which are training courses for the training web page?" The vendor confirmed events will have different IDs and identifiers to enable filtering.
+Categorisation is foundational — it drives the CS5 website widget filters (FEAT-05), the dashboard filters (FEAT-08), reporting (FEAT-09), and it signals which template set is applicable (FEAT-02). Categories must be configurable by admin without a code deployment.
+Acceptance Criteria
+✓  Admin can create, rename, and delete event categories from an admin settings screen.
+✓  Each category has: name, slug, colour hex code (for badge rendering), and a website_section property (events | training | qualifications | all).
+✓  Each event must be assigned exactly one primary category; secondary tags are optional (freeform text).
+✓  The CS5 calendar widget (/embed/calendar) accepts a ?section= query parameter to filter displayed events by website_section.
+✓  Category badge is rendered on event cards across the dashboard, widget, and event detail pages.
+✓  Category selection is required before an event can be published (form validation enforced).
+✓  Renaming a category updates its display label everywhere without re-assigning events.
+✓  Deleting a category is blocked if it has live future events assigned to it; admin sees a count of affected events and a prompt to reassign.
+Vibe Code Brief
+Create categories table: {id, name, slug (unique), colour_hex, website_section: enum(events, training, qualifications, all), created_at}. Event_dates table gets category_id FK (NOT NULL with deferred constraint until template system is in place). GET /categories returns all categories. POST /categories creates (admin only). PUT /categories/:id updates (check no live events before allowing deletion). In POST /events validation, require category_id. In GET /widget/events, accept ?section=training and WHERE c.website_section IN ('training', 'all'). Category badge component: <span style={{background: category.colour_hex}}>. Populate existing events with a default "Uncategorised" category record to avoid FK violations on migration. Verify: create a Training category, publish an event to it, confirm it appears in /embed/calendar?section=training and not in ?section=events.
+
+
+  FEAT-14    [NEW FEATURE]    AI-Powered Event Creation & Conflict Detection
+User Story
+As an event manager, I want to use natural language prompts to create or duplicate events and receive automatic scheduling conflict warnings, So that I can create events faster and avoid calendar clashes.
+Background & Context
+The vendor presented AI as a differentiator for "intelligent scheduling...how can that help you to save some time and eliminate some of those date clashes." The planned approach uses OpenAI in the backend. Speaker 4 described prompt-based workflows as the goal: give a prompt, the system fills in the form, you confirm and submit. Karen confirmed she'd need the ability to manually edit if the AI misunderstands.
+The vendor confirmed: "it will ask for a final confirmation and you have to submit it so the final authority you can double check everything." Conflict detection is a simpler SQL query — no AI needed there. This feature is valuable but not blocking go-live; it is a Phase 1 enhancement that ships with or shortly after the core platform.
+Acceptance Criteria
+✓  Event manager can enter a natural language prompt (e.g., "Create a Member Webinar on 15 March 2027, 2pm, London, max 50 attendees") and the system pre-fills the event creation form.
+✓  All AI-extracted values are shown in editable form fields; the system never auto-submits without explicit user confirmation.
+✓  Conflict detection runs when a new event date is entered: the system checks for same-venue same-time clashes and overlaps with other REC events.
+✓  Conflict warnings are shown as an inline banner with details of the clashing event; manager can override and proceed with a documented reason.
+✓  "Duplicate event" prompt: given an existing event, AI copies all settings into the form and prompts the user to confirm/update the new dates.
+✓  AI suggestions use past event data (similar titles, typical durations, default capacities) to fill in omitted fields with sensible defaults.
+✓  AI prompt interface is embedded within the event creation form (not a separate page or modal).
+✓  If OpenAI API is unavailable, the form remains fully functional without AI assistance — graceful degradation, no error screen.
+Vibe Code Brief
+POST /ai/parse-event-prompt accepts {prompt: string} and calls OpenAI GPT-4o with a structured JSON output instruction: "Extract event details into this schema: {title, category_slug, date_iso, time_24h, duration_minutes, venue_name, capacity, registration_types_suggestion}. Return only valid JSON." Parse response and return to frontend. Conflict detection: POST /events/check-conflict accepts {venue_id, start_datetime, end_datetime, exclude_event_id} and runs: SELECT * FROM event_dates WHERE venue_id=? AND tsrange(start_datetime,end_datetime) && tsrange(?,?) AND id != ?. For duplication: GET /events/:id/duplicate-schema returns the event config ready to pre-fill a new creation form. Frontend: add a "Quick Create with AI" expandable section at the top of the event creation form — a textarea with a Generate button. On submit, call /ai/parse-event-prompt, then populate form fields and highlight AI-filled ones with a light blue ring. Add a "Conflict Check" that fires automatically when date + venue are both filled (debounced 500ms). If OpenAI returns 429 or 5xx, hide the AI section and show a dismissible info banner. Verify with 5 diverse prompts including an ambiguous one.
+
+
+  FEAT-15    [NEW FEATURE]    Cvent Data Migration
+User Story
+As the REC events team, I want all historical event and attendee data migrated from Cvent to the new platform, So that no historical records are lost and past attendees appear in the new system from day one.
+Background & Context
+The vendor stated: "we will make sure that no data is lost in that migration — all the previous attendees who might not have attended the last two years, but they attended three years ago, they should be appearing on the new platform." The vendor confirmed they will coordinate with Cvent account managers to obtain an API export or data dump.
+The migration must also push migrated contacts into Dynamics CRM as historical engagement data to enable cross-selling analysis. This is a one-time process but must support dry-run mode for validation and be completable within the go-live timeline (target Week 17-20 of the 21-week project plan).
+Acceptance Criteria
+✓  All historical events (minimum 3 years back) are migrated with: event name, date, category, description, and registration type details.
+✓  All attendee records migrated with: name, email, organisation, registration type, payment amount, attendance status, and associated event.
+✓  Migrated contacts are upserted into Dynamics CRM using the same deduplication logic as live registrations (FEAT-12).
+✓  Migration reconciliation report produced: Cvent record counts vs. migrated record counts, with zero-discrepancy target.
+✓  Migrated records carry a source_system='cvent' field and the original Cvent record ID for traceability.
+✓  Migration script supports a --dry-run flag that validates and transforms all records without writing to the production database.
+✓  Migration can be re-run incrementally (delta migration) to pick up any late exports from Cvent account managers.
+✓  Post-migration: a random sample of 100 attendee records are manually verified against the Cvent source data as part of UAT.
+Vibe Code Brief
+Build a standalone Node.js migration script at /scripts/migrate-cvent.js. Step 1: ingest Cvent data export (CSV or JSON from Cvent API — obtain format from Cvent account manager). Step 2: transform using a field mapping config file (/config/cvent-field-map.json) — document every field mapping explicitly. Step 3: batch INSERT into events, event_dates, contacts, bookings, payments tables using pg-promise with transaction wrapping per batch of 100 records. Step 4: for each contact, call the Dynamics upsert service (FEAT-12 integration module). Add source_system VARCHAR and external_id VARCHAR columns to all migrated tables. Dry-run: wrap all DB writes in a transaction that is rolled back at the end; still generate the reconciliation report from the attempted inserts. Generate reconciliation_report_{timestamp}.csv: {table, cvent_count, migrated_count, skipped_count, error_count}. Run on staging first with real data. Verify: dry run shows zero errors on 500 Cvent test records; live run reconciliation shows 100% match.
+
+
+  FEAT-16    [NEW FEATURE]    QR Code Badge Scanning (Annual Conference)
+User Story
+As a conference check-in staff member, I want to scan attendee QR codes from printed name badges, So that I can check in hundreds of delegates quickly at the annual conference without scrolling a long list.
+Background & Context
+Karen described the annual conference check-in process: badges are printed (currently via Cvent data in a third-party badge template system), each badge has a QR code, and staff scan it using the mobile app. Karen confirmed: "we scan the QR code to check them in at that one" because the attendee list is too long to scroll. The QR code on badges doubles as a data source for the badge printing system.
+Additionally, sponsors at the annual conference currently use a separate tool to scan attendee badges for lead capture. Karen noted this doesn't need to be in the first release (conference is in June; a new cycle runs from next year). Lead capture for sponsors is deferred to FEAT-21. QR code generation at booking is the dependency shared with FEAT-16 and FEAT-21.
+Acceptance Criteria
+✓  Each confirmed booking generates a unique QR code encoding the booking reference at the point of payment confirmation.
+✓  QR code image is included in the registration confirmation email (embedded PNG, min 200x200px).
+✓  The staff mobile app (FEAT-10) includes a QR Scanner mode accessible from the event check-in screen.
+✓  Scanning a valid QR code instantly identifies the attendee, shows their name and registration type, and records a check-in.
+✓  Scanning an already-checked-in QR code shows an "Already checked in at [time]" warning — no duplicate check-in created.
+✓  Scanning an invalid or unrecognised QR code shows a clear "Invalid badge" error; manual name search remains available.
+✓  Admin can export a badge data CSV for the third-party badge printing system: booking_reference, first_name, last_name, registration_type, qr_data.
+✓  QR codes are valid from 72 hours before to 24 hours after the event date/time.
+Vibe Code Brief
+At booking confirmation, generate QR code using the qrcode npm package: qrcode.toDataURL(bookingReference, {width:300}). Store the QR image as a base64 string in bookings.qr_code_b64. Attach to confirmation email as an embedded image. In the React Native staff app (FEAT-10): add a "Scan QR" button to the AttendeeList screen. Use expo-barcode-scanner or react-native-camera for scanning. On scan, call POST /app/checkins/qr with {qr_payload: bookingReference}. Backend: validate booking reference exists, check event_date matches today, check not already checked in, then create check-in record and return {status: 'checked_in', name, registration_type} or {status: 'already_checked_in', checked_in_at} or {status: 'invalid'}. GET /admin/events/:event_date_id/badge-export returns CSV with the fields above. Add a validity window check: booking.event_date BETWEEN NOW()-72h AND NOW()+24h. Verify end-to-end: book, receive email with QR, scan in app, confirm check-in in dashboard, export badge CSV.
+
+
+  FEAT-17    [NEW FEATURE]    Role-Based Access Control & Microsoft SSO
+User Story
+As a system administrator, I want to assign granular roles and permissions to REC staff, and have all users authenticate via their Microsoft 365 accounts, So that each team member has the right level of access without managing separate passwords.
+Background & Context
+The spec defines six roles: System Administrator, Event Manager, Registration Staff, Finance/Reporting, Check-In Staff (mobile only), and Viewer. SSO is listed as desirable. Given that REC uses Microsoft 365 and Entra External ID is the target IDP for the members portal, Microsoft SSO is the natural choice — staff log in with their @rec.uk.com credentials.
+All user actions must be logged for audit purposes. The Check-In Staff role is unique: these users only access the mobile app, not the web admin dashboard. Finance/Reporting is read-only access to financial data with no ability to modify bookings.
+Acceptance Criteria
+✓  Six predefined roles available: System Administrator, Event Manager, Registration Staff, Finance/Reporting, Check-In Staff, and Viewer.
+✓  Admin can create custom roles by selecting specific permissions from a defined permission enum.
+✓  Users can be assigned multiple roles; effective permissions are the union of all assigned roles.
+✓  All staff authenticate via Microsoft Entra ID SSO (OAuth 2.0/OIDC); no separate password management for REC staff.
+✓  All user actions (event creation, refund processing, data export, role changes) logged to audit_log with: user_id, action, entity_type, entity_id, ip_address, timestamp.
+✓  Check-In Staff role: access restricted to the mobile app only; web admin dashboard is inaccessible.
+✓  Finance/Reporting role: read-only access to financial reports and payment data; no ability to modify events or bookings.
+✓  Admin can deactivate a user account (preserving all audit history) without deleting the record.
+Vibe Code Brief
+RBAC: Create users, roles, user_roles (junction), and permissions tables. Permissions are a static TypeScript enum: CREATE_EVENT, EDIT_EVENT, PUBLISH_EVENT, PROCESS_REFUND, VIEW_REPORTS, VIEW_PAYMENTS, MANAGE_USERS, CHECK_IN, ACCESS_ADMIN_WEB. Each role stores permissions as a JSONB array. Create an authorize(permission: Permission) Express middleware that reads the JWT token, fetches user roles from DB (cache 5 mins), computes the effective permission set, and returns 403 if not permitted. Microsoft SSO: use @azure/msal-node with the Microsoft Entra ID tenant for REC. On first SSO login, create a user record linking Entra Object ID. Admin user management screen: list users, assign/revoke roles, deactivate. Audit_log table: {id, user_id, action, entity_type, entity_id, ip_address, user_agent, created_at}. Write audit log entries in a non-blocking fire-and-forget manner (queue to a background process). Verify: staff user with Event Manager role cannot access finance reports; Check-In Staff cannot access web dashboard.
+
+
+  FEAT-18    [NEW FEATURE]    GDPR Compliance & Data Security
+User Story
+As the REC data protection officer, I want the event platform to be fully UK GDPR-compliant with consent management, data subject rights, and retention policies built in, So that REC meets its legal obligations without manual intervention.
+Background & Context
+The vendor committed to GDPR compliance built into the application: "all the GDPR, everything is like built into the application." UK GDPR applies throughout. Requirements include consent management at registration, right to access (Subject Access Requests), right to erasure, automated data retention, and encryption.
+The platform also needs to meet WCAG 2.1 AA accessibility requirements for all customer-facing pages. Security requirements include MFA for admin users (covered in FEAT-17 via Entra SSO with MFA policy), 99.9% uptime SLA, and SOC 2 Type II or equivalent certification from the hosting infrastructure provider (Azure).
+Acceptance Criteria
+✓  Registration form includes a separate, explicit consent checkbox for marketing communications, independent of booking consent.
+✓  Customers can request a full Subject Access Report from their account; report is generated and emailed within 72 hours.
+✓  Admin can process a right-to-erasure request, anonymising all PII for the contact while preserving booking and financial records.
+✓  Data retention: event data older than the configured retention period (default 7 years) is automatically anonymised by a nightly job.
+✓  All data in transit is encrypted via TLS 1.2+; data at rest encrypted (Azure-managed keys).
+✓  Privacy policy and terms acknowledgment is required at first registration and when either document is updated.
+✓  Consent records stored with: contact_id, consent_type, timestamp, policy_version, ip_address.
+✓  All customer-facing pages pass WCAG 2.1 AA automated accessibility checks (axe-core scan as part of CI pipeline).
+Vibe Code Brief
+Add to contacts table: marketing_consent BOOLEAN, consent_at TIMESTAMP, policy_version_accepted VARCHAR. At registration: show separate marketing consent checkbox (not pre-checked). Store consent record in consents table: {id, contact_id, type: enum(booking, marketing), value: boolean, policy_version, ip_address, created_at}. SAR endpoint: POST /account/sar creates a job that queries ALL tables for the user's contact_id, compiles into a structured JSON report, and emails to the user's verified email address. Right to erasure: POST /admin/contacts/:id/erase runs: UPDATE contacts SET first_name='Deleted', last_name='User', email=encode(sha256(original_email))+'@erased.rec.uk.com', phone=NULL, organisation=NULL WHERE id=?. Write to erasure_log table. Retain: bookings, payments, audit_log. Retention cron: nightly SELECT contacts WHERE last_booking_date < NOW() - INTERVAL '7 years' and run erasure. WCAG: integrate axe-core into Cypress E2E tests — fail CI build if any WCAG AA violations found. Verify: erasure flow leaves payment records intact; SAR email is received within 1 hour in test environment.
+
+
+Dependencies & Blockers
+The following items are external dependencies or blockers that must be resolved before or during development. Items marked "Pending" require action from the named owner. The project cannot go to production until all "Critical Path" dependencies are resolved.
+
+Dependency / Blocker
+Owner
+Target Date
+Status
+Cvent data export — API credentials or CSV dump from Cvent account manager
+Vendor + REC
+Week 12
+Pending
+Microsoft Dynamics 365 Web API credentials and sandbox environment access
+London Systems
+Week 3
+Pending
+Stripe account setup with webhook secret configured for production
+REC Finance
+Week 8
+Pending
+CS5 website — iframe embed permissions confirmed with CS5 provider
+REC Digital Team
+Week 6
+Pending
+Microsoft Entra ID tenant configuration for staff SSO
+London Systems
+Week 4
+Pending
+Azure cloud environment provisioned (App Service + PostgreSQL + Blob Storage)
+Vendor
+Week 2
+In Progress
+REC mobile app developer accounts (Apple App Store + Google Play) registered
+REC / IT
+Week 14
+Pending
+OpenAI API key with sufficient token quota for production workloads
+Vendor
+Week 5
+Pending
+Mux account and webhook secret configured (Video Transcription App)
+Vendor
+Week 1
+In Progress
+Figma UX designs approved by Karen and REC team before development begins
+Vendor + REC
+Week 4
+Pending
+Field mapping document: Dynamics CRM ↔ Event Platform fields signed off
+Vendor + London Systems
+Week 5
+Pending
+Event volume and peak concurrent user estimates provided by REC for infrastructure sizing
+Karen / REC
+Week 2
+Pending
+
+Agreed Ways of Working
+	•	Agile delivery in 2-week sprints; vendor demos to Karen and David at the end of each sprint — feedback incorporated into the next sprint backlog immediately.
+	•	Design reviews: Figma designs for all key screens are reviewed and approved by Karen before development of that screen begins. Changes after approval are accommodated within sprint but excessive scope changes will trigger a timeline conversation.
+	•	Client feedback SLA: REC to provide feedback within 3 business days of any design or demo submission to avoid blocking the development team.
+	•	Change management: if a new requirement is raised during development, the vendor will assess impact and communicate if it will affect the Week 21 deadline. If it is a small change, it is absorbed. If significant, it is queued for post-launch iteration.
+	•	Decisions log: all agreed architectural or scope decisions to be recorded in the project wiki within 24 hours of the relevant call.
+	•	Karen and David to have a brief alignment call (10-15 mins) after each vendor demo to translate technical content and agree internal next steps before the next sprint begins.
+	•	Security: all new API endpoints must include authentication and authorisation middleware before being deployed to staging. No unauthenticated data endpoints in any environment.
+	•	Vendor responsibility includes keeping all underlying packages (Node.js, React, React Native, Azure services) up to date as part of the ongoing support retainer (£3-4k/year).
