@@ -56,6 +56,16 @@ export default function App() {
   const [adminTab, setAdminTab] = useState('overview'); // overview, reports
   const [adminReportData, setAdminReportData] = useState(null);
   const [refundingId, setRefundingId] = useState(null);
+
+  // New states for polling, group bookings, and category settings
+  const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0);
+  const [attendeeDetails, setAttendeeDetails] = useState({});
+  const [adminCategories, setAdminCategories] = useState([]);
+  const [categoryNameInput, setCategoryNameInput] = useState('');
+  const [categorySlugInput, setCategorySlugInput] = useState('');
+  const [categoryColorInput, setCategoryColorInput] = useState('#8C66D4');
+  const [categorySectionInput, setCategorySectionInput] = useState('events');
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
   
   // Staff Check-In Simulator State
   const [staffEvents, setStaffEvents] = useState([]);
@@ -357,6 +367,103 @@ export default function App() {
     setCreatorTickets(prev => prev.filter((_, idx) => idx !== index));
   };
 
+  const refreshAdminData = async () => {
+    setSecondsSinceUpdate(0);
+    await Promise.all([fetchAdminSummary(), fetchAdminReports()]);
+  };
+
+  const fetchAdminCategories = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/categories`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      const data = await res.json();
+      setAdminCategories(data);
+    } catch (err) {
+      console.error('Error loading admin categories:', err);
+    }
+  };
+
+  const handleSaveCategory = async (e) => {
+    e.preventDefault();
+    if (!categoryNameInput || !categorySlugInput) return;
+
+    try {
+      const payload = {
+        name: categoryNameInput,
+        slug: categorySlugInput,
+        color_hex: categoryColorInput,
+        website_section: categorySectionInput
+      };
+
+      const url = editingCategoryId 
+        ? `${API_BASE}/api/categories/${editingCategoryId}` 
+        : `${API_BASE}/api/categories`;
+      const method = editingCategoryId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`Failed to save category: ${err.error}`);
+        return;
+      }
+
+      setCategoryNameInput('');
+      setCategorySlugInput('');
+      setCategoryColorInput('#8C66D4');
+      setCategorySectionInput('events');
+      setEditingCategoryId(null);
+
+      fetchAdminCategories();
+      fetchCategories();
+      fetchEvents(); 
+    } catch (err) {
+      console.error('Error saving category:', err);
+    }
+  };
+
+  const handleDeleteCategory = async (id) => {
+    if (!confirm('Are you sure you want to delete this category?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/categories/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`Delete failed: ${err.error}`);
+        return;
+      }
+
+      fetchAdminCategories();
+      fetchCategories();
+      fetchEvents();
+    } catch (err) {
+      console.error('Error deleting category:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeRole !== 'admin') return;
+
+    const interval = setInterval(() => {
+      setSecondsSinceUpdate(prev => {
+        if (prev >= 29) {
+          fetchAdminSummary();
+          fetchAdminReports();
+          return 0;
+        }
+        return prev + 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeRole]);
+
   const fetchAdminSummary = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/admin/dashboard/summary`);
@@ -606,6 +713,31 @@ export default function App() {
     e.preventDefault();
     if (basket.length === 0) return;
 
+    // Process attendee details for each ticket
+    const processedBasket = basket.map(item => {
+      const details = attendeeDetails[item.event_date_id];
+      if (details?.is_purchaser) {
+        return {
+          ...item,
+          attendee_first_name: delegateFirstName,
+          attendee_last_name: delegateLastName,
+          attendee_email: delegateEmail,
+          attendee_dietary: delegateDietary,
+          attendee_accessibility: delegateAccess,
+          attendee_member_status: memberStatus
+        };
+      }
+      return {
+        ...item,
+        attendee_first_name: details?.first_name || delegateFirstName,
+        attendee_last_name: details?.last_name || delegateLastName,
+        attendee_email: details?.email || delegateEmail,
+        attendee_dietary: details?.dietary || '',
+        attendee_accessibility: details?.accessibility || '',
+        attendee_member_status: 'none'
+      };
+    });
+
     try {
       const res = await fetch(`${API_BASE}/api/checkout`, {
         method: 'POST',
@@ -622,7 +754,7 @@ export default function App() {
             member_status: memberStatus,
             dynamics_contact_id: dynamicsContactId
           },
-          basketItems: basket,
+          basketItems: processedBasket,
           discountCode: appliedPromo?.code || null
         })
       });
@@ -982,11 +1114,9 @@ export default function App() {
               style={{ padding: '8px 12px', fontSize: '13px' }}
             >
               <option value="">All Categories</option>
-              <option value="1">Conference</option>
-              <option value="2">Webinar</option>
-              <option value="3">Legal Helpline Q&A</option>
-              <option value="4">CPD Workshop</option>
-              <option value="5">Qualification</option>
+              {categories.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
             </select>
           </div>
           <div className="widget-filter-item">
@@ -1112,7 +1242,7 @@ export default function App() {
           </button>
           <button 
             className={`role-btn ${activeRole === 'admin' ? 'active' : ''}`}
-            onClick={() => { setActiveRole('admin'); fetchAdminSummary(); }}
+            onClick={() => { setActiveRole('admin'); refreshAdminData(); }}
           >
             👑 Admin Board
           </button>
@@ -1389,24 +1519,42 @@ export default function App() {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '16px 0', borderTop: '2px solid hsl(var(--border-glass))', marginTop: '16px' }}>
-                    {appliedPromo && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'hsl(var(--text-secondary))' }}>
-                        <span>Subtotal:</span>
-                        <span>£{(basket.reduce((acc, item) => acc + (item.waitlist ? 0 : item.price_pence), 0) / 100).toFixed(2)}</span>
-                      </div>
-                    )}
-                    {appliedPromo && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'hsl(var(--success))' }}>
-                        <span>Discount ({appliedPromo.value}%):</span>
-                        <span>-£{((basket.reduce((acc, item) => acc + (item.waitlist ? 0 : item.price_pence), 0) * (appliedPromo.value / 100)) / 100).toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '800' }}>
-                      <span>Total Cost:</span>
-                      <span>
-                        £{((basket.reduce((acc, item) => acc + (item.waitlist ? 0 : item.price_pence), 0) * (appliedPromo ? 1 - appliedPromo.value / 100 : 1)) / 100).toFixed(2)}
-                      </span>
-                    </div>
+                    {(() => {
+                      const baseTotal = basket.reduce((acc, item) => acc + (item.waitlist ? 0 : item.price_pence), 0);
+                      const hasGroupDiscount = basket.length >= 3;
+                      const promoDiscountVal = appliedPromo ? appliedPromo.value : 0;
+                      const totalDiscountPercent = promoDiscountVal + (hasGroupDiscount ? 10 : 0);
+                      const finalTotal = Math.floor(baseTotal * (1 - totalDiscountPercent / 100));
+
+                      return (
+                        <>
+                          {(appliedPromo || hasGroupDiscount) && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'hsl(var(--text-secondary))' }}>
+                              <span>Subtotal:</span>
+                              <span>£{(baseTotal / 100).toFixed(2)}</span>
+                            </div>
+                          )}
+                          {appliedPromo && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'hsl(var(--success))' }}>
+                              <span>Promo Code ({appliedPromo.code} - {appliedPromo.value}%):</span>
+                              <span>-£{((baseTotal * (appliedPromo.value / 100)) / 100).toFixed(2)}</span>
+                            </div>
+                          )}
+                          {hasGroupDiscount && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'hsl(var(--success))' }}>
+                              <span>Group Discount (10%):</span>
+                              <span>-£{((baseTotal * 0.1) / 100).toFixed(2)}</span>
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '800' }}>
+                            <span>Total Cost:</span>
+                            <span>
+                              £{(finalTotal / 100).toFixed(2)}
+                            </span>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -1465,7 +1613,137 @@ export default function App() {
                     <input type="text" className="form-input" value={delegateAccess} onChange={(e) => setDelegateAccess(e.target.value)} />
                   </div>
 
-                  <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '16px', padding: '12px' }}>
+                  {/* Attendee Details Per Ticket (FR-12 Group Bookings) */}
+                  <div style={{ borderTop: '1px solid hsl(var(--border-glass))', paddingTop: '20px', marginTop: '24px' }}>
+                    <h3 style={{ marginBottom: '16px', fontSize: '18px' }}>Attendee Information per Seat</h3>
+                    {basket.map((item, idx) => {
+                      const details = attendeeDetails[item.event_date_id] || { is_purchaser: false, first_name: '', last_name: '', email: '', dietary: '', accessibility: '' };
+                      const isPurchaser = details.is_purchaser;
+                      return (
+                        <div key={item.event_date_id} className="attendee-form-card">
+                          <h4 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px', marginBottom: '12px' }}>
+                            <span style={{ fontWeight: 'bold' }}>Seat {idx + 1}: {item.event_title}</span>
+                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'normal', cursor: 'pointer', margin: 0 }}>
+                              <input 
+                                type="checkbox" 
+                                checked={isPurchaser} 
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setAttendeeDetails(prev => ({
+                                    ...prev,
+                                    [item.event_date_id]: {
+                                      ...prev[item.event_date_id],
+                                      is_purchaser: checked
+                                    }
+                                  }));
+                                }}
+                              />
+                              Same as Purchaser
+                            </label>
+                          </h4>
+                          
+                          <div className="grid-2" style={{ gap: '8px', marginBottom: '8px' }}>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>First Name</label>
+                              <input 
+                                type="text" 
+                                className="form-input" 
+                                style={{ padding: '6px 10px', fontSize: '13px' }}
+                                required 
+                                disabled={isPurchaser}
+                                value={isPurchaser ? delegateFirstName : (details.first_name || '')}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setAttendeeDetails(prev => ({
+                                    ...prev,
+                                    [item.event_date_id]: { ...prev[item.event_date_id], first_name: val }
+                                  }));
+                                }}
+                              />
+                            </div>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Last Name</label>
+                              <input 
+                                type="text" 
+                                className="form-input" 
+                                style={{ padding: '6px 10px', fontSize: '13px' }}
+                                required 
+                                disabled={isPurchaser}
+                                value={isPurchaser ? delegateLastName : (details.last_name || '')}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setAttendeeDetails(prev => ({
+                                    ...prev,
+                                    [item.event_date_id]: { ...prev[item.event_date_id], last_name: val }
+                                  }));
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="form-group" style={{ marginBottom: '8px' }}>
+                            <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Email Address</label>
+                            <input 
+                              type="email" 
+                              className="form-input" 
+                              style={{ padding: '6px 10px', fontSize: '13px' }}
+                              required 
+                              disabled={isPurchaser}
+                              value={isPurchaser ? delegateEmail : (details.email || '')}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setAttendeeDetails(prev => ({
+                                  ...prev,
+                                  [item.event_date_id]: { ...prev[item.event_date_id], email: val }
+                                }));
+                              }}
+                            />
+                          </div>
+
+                          <div className="grid-2" style={{ gap: '8px', marginBottom: 0 }}>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Dietary (Opt)</label>
+                              <input 
+                                type="text" 
+                                className="form-input" 
+                                style={{ padding: '6px 10px', fontSize: '13px' }}
+                                placeholder="e.g. Vegetarian"
+                                disabled={isPurchaser}
+                                value={isPurchaser ? delegateDietary : (details.dietary || '')}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setAttendeeDetails(prev => ({
+                                    ...prev,
+                                    [item.event_date_id]: { ...prev[item.event_date_id], dietary: val }
+                                  }));
+                                }}
+                              />
+                            </div>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Access (Opt)</label>
+                              <input 
+                                type="text" 
+                                className="form-input" 
+                                style={{ padding: '6px 10px', fontSize: '13px' }}
+                                placeholder="e.g. Ramp Access"
+                                disabled={isPurchaser}
+                                value={isPurchaser ? delegateAccess : (details.accessibility || '')}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setAttendeeDetails(prev => ({
+                                    ...prev,
+                                    [item.event_date_id]: { ...prev[item.event_date_id], accessibility: val }
+                                  }));
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '24px', padding: '12px' }}>
                     Proceed to Payment
                   </button>
                 </form>
@@ -1552,6 +1830,10 @@ export default function App() {
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span className="live-badge">
+                <span className="pulse-dot"></span>
+                Last checked: {secondsSinceUpdate === 0 ? 'just now' : `${secondsSinceUpdate}s ago`}
+              </span>
               <span style={{ fontSize: '13px', color: 'hsl(var(--text-secondary))' }}>Current RBAC Role:</span>
               <select 
                 className="form-input" 
@@ -1584,6 +1866,11 @@ export default function App() {
               {adminRole !== 'viewer' && (
                 <button className={`tab-btn ${adminTab === 'templates' ? 'active' : ''}`} onClick={() => { setAdminTab('templates'); fetchTemplates(); }}>
                   Event Creator & Templates
+                </button>
+              )}
+              {adminRole !== 'viewer' && (
+                <button className={`tab-btn ${adminTab === 'categories' ? 'active' : ''}`} onClick={() => { setAdminTab('categories'); fetchAdminCategories(); }}>
+                  ⚙️ Category Settings
                 </button>
               )}
               <button className={`tab-btn ${adminTab === 'reports' ? 'active' : ''}`} onClick={() => { setAdminTab('reports'); fetchAdminReports(); }}>
@@ -1775,11 +2062,9 @@ export default function App() {
                     <div className="form-group">
                       <label className="form-label">Category *</label>
                       <select className={`form-input ${aiHighlight ? 'ai-highlight-input' : ''}`} value={creatorCategoryId} onChange={(e) => setCreatorCategoryId(e.target.value)} disabled={adminRole === 'readonly'}>
-                        <option value="1">Conference</option>
-                        <option value="2">Webinar</option>
-                        <option value="3">Legal Helpline Q&A</option>
-                        <option value="4">CPD Workshop</option>
-                        <option value="5">Qualification</option>
+                        {categories.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
                       </select>
                     </div>
                     <div className="form-group">
@@ -1950,6 +2235,173 @@ export default function App() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {adminTab === 'categories' && adminRole !== 'viewer' && (
+            <div>
+              <div className="grid-3" style={{ gap: '24px', alignItems: 'start' }}>
+                {/* Form Column */}
+                <div className="glass-card" style={{ gridColumn: 'span 1', padding: '20px' }}>
+                  <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>
+                    {editingCategoryId ? '✏️ Edit Category' : '➕ Add Category'}
+                  </h3>
+                  <form onSubmit={handleSaveCategory}>
+                    <div className="form-group">
+                      <label className="form-label">Category Name *</label>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        required 
+                        placeholder="e.g. Special Briefing"
+                        value={categoryNameInput}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCategoryNameInput(val);
+                          if (!editingCategoryId) {
+                            setCategorySlugInput(val.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+                          }
+                        }}
+                        disabled={adminRole === 'readonly'}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Slug (URL identifier) *</label>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        required 
+                        placeholder="e.g. special-briefing"
+                        value={categorySlugInput}
+                        onChange={(e) => setCategorySlugInput(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}
+                        disabled={adminRole === 'readonly'}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Color Hex *</label>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <input 
+                          type="color" 
+                          className="form-input" 
+                          style={{ width: '48px', height: '38px', padding: '2px', cursor: 'pointer' }}
+                          value={categoryColorInput}
+                          onChange={(e) => setCategoryColorInput(e.target.value)}
+                          disabled={adminRole === 'readonly'}
+                        />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          style={{ flex: 1 }}
+                          required
+                          value={categoryColorInput}
+                          onChange={(e) => setCategoryColorInput(e.target.value)}
+                          disabled={adminRole === 'readonly'}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Website Section *</label>
+                      <select 
+                        className="form-input" 
+                        value={categorySectionInput} 
+                        onChange={(e) => setCategorySectionInput(e.target.value)}
+                        disabled={adminRole === 'readonly'}
+                      >
+                        <option value="events">Events</option>
+                        <option value="training">Training</option>
+                        <option value="qualifications">Qualifications</option>
+                        <option value="all">All</option>
+                      </select>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+                      <button 
+                        type="submit" 
+                        className="btn btn-primary" 
+                        style={{ flex: 1 }}
+                        disabled={adminRole === 'readonly'}
+                      >
+                        {editingCategoryId ? 'Update' : 'Create'}
+                      </button>
+                      {editingCategoryId && (
+                        <button 
+                          type="button" 
+                          className="btn btn-secondary" 
+                          onClick={() => {
+                            setCategoryNameInput('');
+                            setCategorySlugInput('');
+                            setCategoryColorInput('#8C66D4');
+                            setCategorySectionInput('events');
+                            setEditingCategoryId(null);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                </div>
+
+                {/* List Column */}
+                <div style={{ gridColumn: 'span 2' }}>
+                  <h3 style={{ fontSize: '18px', marginBottom: '16px' }}>Existing Categories</h3>
+                  {adminCategories.length === 0 ? (
+                    <p style={{ color: 'hsl(var(--text-muted))' }}>No categories found. Click overview to refresh.</p>
+                  ) : (
+                    <div>
+                      {adminCategories.map(c => (
+                        <div key={c.id} className="category-card-item">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span 
+                              style={{ 
+                                width: '16px', 
+                                height: '16px', 
+                                borderRadius: '4px', 
+                                backgroundColor: c.color_hex, 
+                                display: 'inline-block' 
+                              }}
+                            />
+                            <div>
+                              <strong style={{ fontSize: '15px', color: 'white' }}>{c.name}</strong>
+                              <div style={{ fontSize: '12px', color: 'hsl(var(--text-muted))', marginTop: '2px' }}>
+                                Slug: <code>{c.slug}</code> | Section: <span style={{ textTransform: 'capitalize' }}>{c.website_section}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button 
+                              className="btn btn-secondary" 
+                              style={{ padding: '6px 12px', fontSize: '12px' }}
+                              disabled={adminRole === 'readonly'}
+                              onClick={() => {
+                                setEditingCategoryId(c.id);
+                                setCategoryNameInput(c.name);
+                                setCategorySlugInput(c.slug);
+                                setCategoryColorInput(c.color_hex);
+                                setCategorySectionInput(c.website_section);
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button 
+                              className="btn btn-secondary" 
+                              style={{ padding: '6px 12px', fontSize: '12px', borderColor: 'hsl(var(--error))', color: 'hsl(var(--error))' }}
+                              disabled={adminRole === 'readonly'}
+                              onClick={() => handleDeleteCategory(c.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

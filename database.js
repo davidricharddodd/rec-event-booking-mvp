@@ -65,7 +65,9 @@ async function initDatabase() {
       category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
       type TEXT NOT NULL CHECK(type IN ('standalone', 'umbrella')),
       status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'published', 'archived')),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      source_system TEXT DEFAULT 'rec',
+      external_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS event_dates (
@@ -100,7 +102,9 @@ async function initDatabase() {
       accessibility_needs TEXT,
       dynamics_contact_id TEXT,
       member_status TEXT DEFAULT 'none',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      source_system TEXT DEFAULT 'rec',
+      external_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS bookings (
@@ -116,7 +120,9 @@ async function initDatabase() {
       qr_code_b64 TEXT,
       checked_in INTEGER DEFAULT 0 CHECK(checked_in IN (0, 1)),
       checked_in_at TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      source_system TEXT DEFAULT 'rec',
+      external_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS payments (
@@ -127,7 +133,9 @@ async function initDatabase() {
       vat_pence INTEGER NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('succeeded', 'refunded', 'failed')),
       refunded_amount_pence INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      source_system TEXT DEFAULT 'rec',
+      external_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS email_jobs (
@@ -176,6 +184,21 @@ async function initDatabase() {
       expires_at TEXT
     );
   `);
+
+  // Alter tables to add columns if they don't exist in existing tables
+  const tablesToAlter = ['events', 'delegates', 'bookings', 'payments'];
+  for (const table of tablesToAlter) {
+    try {
+      await query.exec(`ALTER TABLE ${table} ADD COLUMN source_system TEXT DEFAULT 'rec'`);
+    } catch (e) {
+      // Column might already exist, ignore
+    }
+    try {
+      await query.exec(`ALTER TABLE ${table} ADD COLUMN external_id TEXT`);
+    } catch (e) {
+      // Column might already exist, ignore
+    }
+  }
 
   // Check if categories are already seeded
   const categoryCount = await query.get('SELECT COUNT(*) as count FROM categories');

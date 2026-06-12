@@ -60,6 +60,69 @@ app.get('/api/categories', async (req, res) => {
   }
 });
 
+app.post('/api/categories', async (req, res) => {
+  try {
+    const { name, slug, color_hex, website_section } = req.body;
+    if (!name || !slug || !color_hex || !website_section) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    const result = await query.run(
+      'INSERT INTO categories (name, slug, color_hex, website_section) VALUES (?, ?, ?, ?)',
+      [name, slug.toLowerCase(), color_hex, website_section]
+    );
+    res.status(201).json({ success: true, id: result.id });
+  } catch (err) {
+    if (err.message.includes('UNIQUE constraint failed')) {
+      return res.status(400).json({ error: 'Category slug must be unique' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/categories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, slug, color_hex, website_section } = req.body;
+    if (!name || !slug || !color_hex || !website_section) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    await query.run(
+      'UPDATE categories SET name = ?, slug = ?, color_hex = ?, website_section = ? WHERE id = ?',
+      [name, slug.toLowerCase(), color_hex, website_section, id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    if (err.message.includes('UNIQUE constraint failed')) {
+      return res.status(400).json({ error: 'Category slug must be unique' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/categories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const nowStr = new Date().toISOString();
+    const blockingCheck = await query.get(
+      `SELECT COUNT(*) as count FROM events e
+       JOIN event_dates ed ON e.id = ed.event_id
+       WHERE e.category_id = ? AND e.status = 'published' AND ed.end_datetime >= ?`,
+      [id, nowStr]
+    );
+
+    if (blockingCheck.count > 0) {
+      return res.status(400).json({
+        error: 'Cannot delete category because it is assigned to future published events.'
+      });
+    }
+
+    await query.run('DELETE FROM categories WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/events', async (req, res) => {
   try {
     const { section, category, status } = req.query;
@@ -239,25 +302,26 @@ app.post('/api/checkout', async (req, res) => {
       }
     }
 
-    // Upsert delegate
-    let delegateRecord = await query.get('SELECT * FROM delegates WHERE email = ?', [delegate.email]);
-    let delegateId;
-    if (delegateRecord) {
-      delegateId = delegateRecord.id;
+    // Upsert primary purchaser delegate (for billing record)
+    let purchaserRecord = await query.get('SELECT * FROM delegates WHERE email = ?', [delegate.email]);
+    let purchaserId;
+    if (purchaserRecord) {
+      purchaserId = purchaserRecord.id;
       await query.run(
         'UPDATE delegates SET first_name = ?, last_name = ?, organisation = ?, phone = ?, dietary_requirements = ?, accessibility_needs = ?, member_status = ? WHERE id = ?',
-        [delegate.first_name, delegate.last_name, delegate.organisation, delegate.phone, delegate.dietary_requirements, delegate.accessibility_needs, delegate.member_status || 'none', delegateId]
+        [delegate.first_name, delegate.last_name, delegate.organisation, delegate.phone, delegate.dietary_requirements, delegate.accessibility_needs, delegate.member_status || 'none', purchaserId]
       );
     } else {
       const result = await query.run(
         'INSERT INTO delegates (first_name, last_name, email, organisation, phone, dietary_requirements, accessibility_needs, member_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [delegate.first_name, delegate.last_name, delegate.email, delegate.organisation, delegate.phone, delegate.dietary_requirements, delegate.accessibility_needs, delegate.member_status || 'none']
       );
-      delegateId = result.id;
+      purchaserId = result.id;
     }
 
-    // Process discount code
-    let discountPercent = 0;
+    // Process discount code & group discount
+    const hasGroupDiscount = basketItems.length >= 3;
+    let promoDiscountPercent = 0;
     if (discountCode) {
       const codeRecord = await query.get(
         "SELECT * FROM discount_codes WHERE code = ? AND (expires_at IS NULL OR expires_at >= ?)",
@@ -265,19 +329,22 @@ app.post('/api/checkout', async (req, res) => {
       );
       if (codeRecord) {
         if (codeRecord.max_uses === null || codeRecord.uses_count < codeRecord.max_uses) {
-          discountPercent = codeRecord.value;
+          promoDiscountPercent = codeRecord.value;
           await query.run("UPDATE discount_codes SET uses_count = uses_count + 1 WHERE id = ?", [codeRecord.id]);
         }
       }
     }
+    
+    // Stack discounts additively
+    const totalDiscountPercent = promoDiscountPercent + (hasGroupDiscount ? 10 : 0);
 
     // Calculate totals after discounts
     let totalAmount = 0;
     const itemsWithDiscount = basketItems.map(item => {
       const isWaitlist = item.waitlist ? true : false;
       let finalPrice = isWaitlist ? 0 : item.price_pence;
-      if (!isWaitlist && discountPercent > 0) {
-        finalPrice = Math.floor(finalPrice * (1 - discountPercent / 100));
+      if (!isWaitlist && totalDiscountPercent > 0) {
+        finalPrice = Math.floor(finalPrice * (1 - totalDiscountPercent / 100));
       }
       totalAmount += finalPrice;
       return {
@@ -293,6 +360,30 @@ app.post('/api/checkout', async (req, res) => {
     const confirmedBookings = [];
 
     for (const item of itemsWithDiscount) {
+      // Upsert individual attendee details for each seat in the basket
+      const attEmail = (item.attendee_email || delegate.email).toLowerCase();
+      const attFirstName = item.attendee_first_name || delegate.first_name;
+      const attLastName = item.attendee_last_name || delegate.last_name;
+      const attDietary = item.attendee_dietary || '';
+      const attAccessibility = item.attendee_accessibility || '';
+      const attMemberStatus = item.attendee_member_status || 'none';
+
+      let attendeeId;
+      let attendeeRecord = await query.get('SELECT * FROM delegates WHERE email = ?', [attEmail]);
+      if (attendeeRecord) {
+        attendeeId = attendeeRecord.id;
+        await query.run(
+          'UPDATE delegates SET first_name = ?, last_name = ?, organisation = ?, phone = ?, dietary_requirements = ?, accessibility_needs = ?, member_status = ? WHERE id = ?',
+          [attFirstName, attLastName, delegate.organisation, delegate.phone, attDietary, attAccessibility, attMemberStatus, attendeeId]
+        );
+      } else {
+        const result = await query.run(
+          'INSERT INTO delegates (first_name, last_name, email, organisation, phone, dietary_requirements, accessibility_needs, member_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [attFirstName, attLastName, attEmail, delegate.organisation, delegate.phone, attDietary, attAccessibility, attMemberStatus]
+        );
+        attendeeId = result.id;
+      }
+
       const reference = generateReference();
       const qrCodeB64 = `data:image/png;base64,QR_MOCK_PAYLOAD_${reference}`;
 
@@ -303,7 +394,7 @@ app.post('/api/checkout', async (req, res) => {
         [
           reference, 
           item.event_date_id, 
-          delegateId, 
+          attendeeId, 
           item.registration_type_id, 
           item.is_waitlist ? 'waitlisted' : 'confirmed', 
           item.is_waitlist ? 'pending' : (totalAmount > 0 ? 'pending' : 'paid'), 
@@ -321,7 +412,9 @@ app.post('/api/checkout', async (req, res) => {
         date_id: item.event_date_id,
         price_pence: item.price_pence,
         qr_code_b64: qrCodeB64,
-        status: item.is_waitlist ? 'waitlisted' : 'confirmed'
+        status: item.is_waitlist ? 'waitlisted' : 'confirmed',
+        attendee_email: attEmail,
+        attendee_name: `${attFirstName} ${attLastName}`
       });
 
       if (item.is_waitlist) {
@@ -331,9 +424,9 @@ app.post('/api/checkout', async (req, res) => {
            VALUES ('waitlist', ?, ?, ?, ?, ?, 'pending')`,
           [
             bookingId,
-            delegate.email,
+            attEmail,
             `Waitlist Registered: ${item.event_title}`,
-            `<h1>Hi ${delegate.first_name},</h1>
+            `<h1>Hi ${attFirstName},</h1>
              <p>You have been placed on the waitlist for <strong>${item.event_title}</strong> (Session: ${item.date_string}).</p>
              <p><strong>Booking Reference:</strong> ${reference}</p>
              <p>If a space becomes available, we will notify you immediately.</p>`,
@@ -348,7 +441,7 @@ app.post('/api/checkout', async (req, res) => {
       stripe_payment_intent_id: stripePI,
       bookings: confirmedBookings,
       total_amount_pence: totalAmount,
-      delegate_id: delegateId
+      delegate_id: purchaserId
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
