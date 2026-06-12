@@ -1035,6 +1035,234 @@ app.post('/api/admin/delegates/:id/erase', async (req, res) => {
 });
 
 // ----------------------------------------------------
+// FEAT-05 & FEAT-14 NEW API ENDPOINTS
+// ----------------------------------------------------
+
+// GET /api/widget/events - Public unauthenticated events for widget calendar
+app.get('/api/widget/events', async (req, res) => {
+  try {
+    const events = await query.all(`
+      SELECT e.*, c.name as category_name, c.color_hex, c.website_section,
+             MIN(ed.start_datetime) as next_start,
+             SUM(ed.capacity) as total_capacity,
+             SUM(ed.sold_count) as total_sold
+      FROM events e
+      LEFT JOIN categories c ON e.category_id = c.id
+      LEFT JOIN event_dates ed ON e.id = ed.event_id
+      WHERE e.status = 'published' AND ed.start_datetime >= datetime('now')
+      GROUP BY e.id
+      ORDER BY next_start ASC
+    `);
+
+    // For each event, fetch dates and registration types details
+    for (const event of events) {
+      event.dates = await query.all(
+        'SELECT * FROM event_dates WHERE event_id = ? ORDER BY start_datetime ASC',
+        [event.id]
+      );
+      for (const date of event.dates) {
+        date.registration_types = await query.all(
+          'SELECT * FROM registration_types WHERE event_date_id = ? ORDER BY price_pence ASC',
+          [date.id]
+        );
+      }
+    }
+    res.json(events);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/events/check-conflict - Validate location and date overlaps
+app.post('/api/events/check-conflict', async (req, res) => {
+  try {
+    const { start_datetime, end_datetime, location, exclude_event_date_id } = req.body;
+    if (!start_datetime || !end_datetime || !location) {
+      return res.status(400).json({ error: 'Missing start_datetime, end_datetime, or location' });
+    }
+
+    // Query SQLite event_dates table for overlap at the same location
+    // Overlap condition: start1 < end2 AND start2 < end1
+    const querySql = `
+      SELECT ed.*, e.title
+      FROM event_dates ed
+      JOIN events e ON ed.event_id = e.id
+      WHERE ed.location = ?
+        AND ed.start_datetime < ?
+        AND ed.end_datetime > ?
+        AND ed.id != ?
+        AND ed.status != 'cancelled'
+        AND e.status != 'archived'
+    `;
+    const conflict = await query.get(querySql, [
+      location,
+      end_datetime,
+      start_datetime,
+      exclude_event_date_id || 0
+    ]);
+
+    if (conflict) {
+      res.json({ conflict: true, event: conflict });
+    } else {
+      res.json({ conflict: false });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ai/parse-prompt - NLP AI Prompt Event Creation
+app.post('/api/ai/parse-prompt', async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
+
+    // 1. Try OpenAI if API key is present
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const { default: OpenAI } = require('openai');
+        const openai = new OpenAI();
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: `You are an AI assistant for the REC Event platform. Extract event details from the prompt and return a valid JSON object matching this schema:
+{
+  "title": "String",
+  "description": "String",
+  "category_id": 1-5 (1:Conference, 2:Webinar, 3:Legal Helpline Q&A, 4:CPD Workshop, 5:Qualification),
+  "type": "standalone" or "umbrella",
+  "start_datetime": "YYYY-MM-DDTHH:MM",
+  "end_datetime": "YYYY-MM-DDTHH:MM",
+  "location": "String",
+  "capacity": 100,
+  "tickets": [
+    { "name": "Member Ticket", "price_pence": 0, "capacity": 80, "is_member_only": 1 },
+    { "name": "Non-Member Ticket", "price_pence": 5000, "capacity": 20, "is_member_only": 0 }
+  ]
+}`
+            },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" }
+        });
+        const parsed = JSON.parse(completion.choices[0].message.content);
+        return res.json(parsed);
+      } catch (aiErr) {
+        console.error("OpenAI error, falling back to regex parser:", aiErr.message);
+      }
+    }
+
+    // 2. Fallback heuristic/regex engine
+    const lowercasePrompt = prompt.toLowerCase();
+    
+    // Title Extraction
+    let title = "AI Generated Event";
+    const aboutMatch = prompt.match(/(?:about|called|named|title)\s+["']?([^"'\n,.]+)/i);
+    if (aboutMatch) {
+      title = aboutMatch[1].trim();
+    } else {
+      title = prompt.split(' ').slice(0, 4).join(' ').replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"") + '...';
+    }
+
+    // Category Identification
+    let category_id = 1; // Default: Conference
+    if (lowercasePrompt.includes('webinar') || lowercasePrompt.includes('online seminar')) category_id = 2;
+    else if (lowercasePrompt.includes('legal') || lowercasePrompt.includes('helpline') || lowercasePrompt.includes('q&a')) category_id = 3;
+    else if (lowercasePrompt.includes('cpd') || lowercasePrompt.includes('workshop') || lowercasePrompt.includes('training')) category_id = 4;
+    else if (lowercasePrompt.includes('qualification') || lowercasePrompt.includes('course') || lowercasePrompt.includes('exam')) category_id = 5;
+
+    // Type Identification
+    const type = lowercasePrompt.includes('umbrella') || lowercasePrompt.includes('series') || lowercasePrompt.includes('recurring') ? 'umbrella' : 'standalone';
+
+    // Date/Time Parsing
+    let start_datetime = "";
+    let end_datetime = "";
+    const isoDateMatch = prompt.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+    const timeMatch = prompt.match(/\b(\d{2}:\d{2})\b/);
+
+    if (isoDateMatch) {
+      const datePart = isoDateMatch[1];
+      const timePart = timeMatch ? timeMatch[1] : "10:00";
+      start_datetime = `${datePart}T${timePart}`;
+      const hour = parseInt(timePart.split(':')[0], 10);
+      const endHour = String(hour + 1).padStart(2, '0');
+      end_datetime = `${datePart}T${endHour}:${timePart.split(':')[1]}`;
+    } else {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const datePart = tomorrow.toISOString().split('T')[0];
+      start_datetime = `${datePart}T10:00`;
+      end_datetime = `${datePart}T11:00`;
+    }
+
+    // Location
+    let location = "Virtual (MS Teams)";
+    if (lowercasePrompt.includes('london')) location = "REC London Office, EC2";
+    else if (lowercasePrompt.includes('manchester')) location = "Manchester Center";
+    else {
+      const locMatch = prompt.match(/(?:at|in|location)\s+([A-Z][a-zA-Z0-9\s,]+)/);
+      if (locMatch) location = locMatch[1].trim();
+    }
+
+    // Capacity
+    let capacity = 100;
+    const capMatch = prompt.match(/(?:capacity|limit|size|max)\s+of?\s*(\d+)/i) || prompt.match(/\b(\d+)\s*(?:people|delegates|attendees|seats)\b/i);
+    if (capMatch) capacity = parseInt(capMatch[1], 10);
+
+    // Tickets & Pricing
+    let tickets = [];
+    const priceMatches = prompt.match(/£\s*(\d+(?:\.\d{2})?)/g);
+    if (priceMatches && priceMatches.length > 0) {
+      const memberPrice = Math.round(parseFloat(priceMatches[0].replace('£', '')) * 100);
+      tickets.push({
+        name: "Member Rate",
+        price_pence: memberPrice,
+        capacity: Math.round(capacity * 0.8),
+        is_member_only: 1
+      });
+      
+      if (priceMatches.length > 1) {
+        const nonMemberPrice = Math.round(parseFloat(priceMatches[1].replace('£', '')) * 100);
+        tickets.push({
+          name: "Non-Member Rate",
+          price_pence: nonMemberPrice,
+          capacity: Math.round(capacity * 0.2),
+          is_member_only: 0
+        });
+      } else {
+        tickets.push({
+          name: "Non-Member Rate",
+          price_pence: Math.round(memberPrice * 1.5),
+          capacity: Math.round(capacity * 0.2),
+          is_member_only: 0
+        });
+      }
+    } else {
+      tickets = [
+        { name: "Member Ticket", price_pence: 0, capacity: Math.round(capacity * 0.8), is_member_only: 1 },
+        { name: "Non-Member Ticket", price_pence: 0, capacity: Math.round(capacity * 0.2), is_member_only: 0 }
+      ];
+    }
+
+    res.json({
+      title,
+      description: prompt,
+      category_id,
+      type,
+      start_datetime,
+      end_datetime,
+      location,
+      capacity,
+      tickets
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
 // PRODUCTION HOSTING: SERVING FRONTEND BUILD
 // ----------------------------------------------------
 app.use(express.static(path.join(__dirname, 'client/dist')));

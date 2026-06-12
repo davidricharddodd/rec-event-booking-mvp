@@ -94,26 +94,124 @@ export default function App() {
   const [creatorCapacity, setCreatorCapacity] = useState(100);
   const [creatorTickets, setCreatorTickets] = useState([]);
 
+  // Widget Iframe Mode & Filters (FEAT-05)
+  const isEmbed = window.location.pathname === '/embed/calendar' || window.location.search.includes('embed=true');
+  const [widgetEvents, setWidgetEvents] = useState([]);
+  const [widgetSearch, setWidgetSearch] = useState('');
+  const [widgetCategory, setWidgetCategory] = useState('');
+  const [widgetFormat, setWidgetFormat] = useState('all');
+  const [widgetDateFrom, setWidgetDateFrom] = useState('');
+  const [widgetDateTo, setWidgetDateTo] = useState('');
+  const widgetContainerRef = useRef(null);
+
+  // AI Prompt & Scheduling Clash States (FEAT-14)
+  const [aiPromptText, setAiPromptText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiHighlight, setAiHighlight] = useState(false);
+  const [conflictWarning, setConflictWarning] = useState(null);
+  const [overrideConflict, setOverrideConflict] = useState(false);
+
   // Sync basket to local storage
   useEffect(() => {
     localStorage.setItem('rec_basket', JSON.stringify(basket));
   }, [basket]);
 
-  // Load events & categories initially
+  // Load events & categories initially (with deep-linking check)
   useEffect(() => {
-    fetchEvents();
-    fetchCategories();
+    const initLoad = async () => {
+      const loadedEvents = await fetchEvents();
+      fetchCategories();
+      
+      // Check query parameter for deep-linking
+      const params = new URLSearchParams(window.location.search);
+      const eventId = params.get('event_id');
+      if (eventId && loadedEvents && loadedEvents.length > 0) {
+        const found = loadedEvents.find(e => String(e.id) === eventId);
+        if (found) {
+          setSelectedEvent(found);
+          if (found.dates && found.dates.length > 0) {
+            setSelectedDateId(String(found.dates[0].id));
+          }
+        }
+      }
+    };
+    if (!isEmbed) {
+      initLoad();
+    }
+  }, [isEmbed]);
+
+  // Load widget events when in iframe mode
+  useEffect(() => {
+    if (isEmbed) {
+      fetchWidgetEvents();
+      fetchCategories();
+    }
+  }, [isEmbed]);
+
+  // Auto-height sync for iframe widget (FR-28)
+  useEffect(() => {
+    if (!isEmbed) return;
+    
+    document.body.classList.add('embed-widget-body');
+
+    const handleResize = () => {
+      if (widgetContainerRef.current) {
+        const height = widgetContainerRef.current.scrollHeight;
+        window.parent.postMessage({ type: 'resize', height }, '*');
+      }
+    };
+
+    const resizeObserver = new ResizeObserver(handleResize);
+    if (widgetContainerRef.current) {
+      resizeObserver.observe(widgetContainerRef.current);
+    }
+
+    handleResize();
+
+    return () => {
+      document.body.classList.remove('embed-widget-body');
+      resizeObserver.disconnect();
+    };
+  }, [isEmbed, widgetEvents]);
+
+  // Real-time conflict checking with debounce (FR-08)
+  useEffect(() => {
+    if (!creatorStart || !creatorEnd || !creatorLocation) {
+      setConflictWarning(null);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      checkSchedulingConflict(creatorStart, creatorEnd, creatorLocation);
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [creatorStart, creatorEnd, creatorLocation]);
+
+  // Listen to sandbox iframe resize messages
+  useEffect(() => {
+    const handleEmbedMessage = (e) => {
+      if (e.data && e.data.type === 'resize') {
+        const iframe = document.getElementById('rec-calendar-preview-iframe');
+        if (iframe) {
+          iframe.style.height = `${e.data.height}px`;
+        }
+      }
+    };
+    window.addEventListener('message', handleEmbedMessage);
+    return () => window.removeEventListener('message', handleEmbedMessage);
   }, []);
 
   // Poll for background simulator updates (emails & crm logs)
   useEffect(() => {
+    if (isEmbed) return;
     const interval = setInterval(() => {
       fetchCRMLogs();
       fetchEmailQueue();
       if (activeRole === 'admin') fetchAdminSummary();
     }, 4000);
     return () => clearInterval(interval);
-  }, [activeRole]);
+  }, [activeRole, isEmbed]);
 
   // Handle auto-update of attendees when date changes in admin drawer
   useEffect(() => {
@@ -135,10 +233,13 @@ export default function App() {
       const res = await fetch(`${API_BASE}/api/events?status=published`);
       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const data = await res.json();
-      setEvents(Array.isArray(data) ? data : []);
+      const arr = Array.isArray(data) ? data : [];
+      setEvents(arr);
+      return arr;
     } catch (err) {
       console.error('Error fetching events:', err);
       setEvents([]);
+      return [];
     }
   };
 
@@ -152,6 +253,108 @@ export default function App() {
       console.error('Error fetching categories:', err);
       setCategories([]);
     }
+  };
+
+  const fetchWidgetEvents = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/widget/events`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      const data = await res.json();
+      setWidgetEvents(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Error fetching widget events:', err);
+      setWidgetEvents([]);
+    }
+  };
+
+  const checkSchedulingConflict = async (start, end, location, excludeId = null) => {
+    if (!start || !end || !location) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/events/check-conflict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          start_datetime: start,
+          end_datetime: end,
+          location: location,
+          exclude_event_date_id: excludeId
+        })
+      });
+      if (!res.ok) throw new Error('Failed conflict check');
+      const data = await res.json();
+      if (data.conflict) {
+        setConflictWarning(data.event);
+      } else {
+        setConflictWarning(null);
+      }
+    } catch (err) {
+      console.error('Error checking conflict:', err);
+    }
+  };
+
+  const handleAIPromptSubmit = async (e) => {
+    e.preventDefault();
+    if (!aiPromptText.trim()) return;
+    setAiLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/ai/parse-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: aiPromptText })
+      });
+      if (!res.ok) throw new Error('API parse prompt failed');
+      const parsed = await res.json();
+      
+      // Pre-fill form
+      setCreatorTitle(parsed.title || '');
+      setCreatorDesc(parsed.description || '');
+      setCreatorCategoryId(String(parsed.category_id || '1'));
+      setCreatorType(parsed.type || 'standalone');
+      setCreatorStart(parsed.start_datetime || '');
+      setCreatorEnd(parsed.end_datetime || '');
+      setCreatorLocation(parsed.location || '');
+      setCreatorCapacity(parsed.capacity || 100);
+      setCreatorTickets(parsed.tickets || []);
+      
+      // Trigger highlight animation
+      setAiHighlight(true);
+      setTimeout(() => setAiHighlight(false), 2000);
+      
+      // Clear prompt input
+      setAiPromptText('');
+      setOverrideConflict(false);
+    } catch (err) {
+      console.error('AI parse prompt error:', err);
+      alert('Failed to parse prompt. Please check network or try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleTicketChange = (index, field, value) => {
+    setCreatorTickets(prev => prev.map((t, idx) => {
+      if (idx === index) {
+        let nextValue = value;
+        if (field === 'price_pence' || field === 'capacity') {
+          nextValue = parseInt(value, 10) || 0;
+        } else if (field === 'is_member_only') {
+          nextValue = value ? 1 : 0;
+        }
+        return { ...t, [field]: nextValue };
+      }
+      return t;
+    }));
+  };
+
+  const handleAddTicket = () => {
+    setCreatorTickets(prev => [
+      ...prev,
+      { name: 'Standard Ticket', price_pence: 0, capacity: creatorCapacity, is_member_only: 0 }
+    ]);
+  };
+
+  const handleRemoveTicket = (index) => {
+    setCreatorTickets(prev => prev.filter((_, idx) => idx !== index));
   };
 
   const fetchAdminSummary = async () => {
@@ -637,6 +840,11 @@ export default function App() {
       return;
     }
 
+    if (conflictWarning && !overrideConflict) {
+      alert('Cannot publish event due to an active scheduling conflict. Please resolve the conflict or check the "Override Conflict" box.');
+      return;
+    }
+
     const eventData = {
       title: creatorTitle,
       description: creatorDesc,
@@ -679,6 +887,8 @@ export default function App() {
         setCreatorLocation('');
         setCreatorCapacity(100);
         setCreatorTickets([]);
+        setConflictWarning(null);
+        setOverrideConflict(false);
         // Refresh listings
         fetchEvents();
         fetchAdminSummary();
@@ -690,6 +900,176 @@ export default function App() {
       alert('Error creating event.');
     }
   };
+
+  // Client-side filtering logic for embed widget
+  const filteredWidgetEvents = widgetEvents.filter(event => {
+    // 1. Search Query
+    if (widgetSearch) {
+      const query = widgetSearch.toLowerCase();
+      const matchTitle = event.title?.toLowerCase().includes(query);
+      const matchDesc = event.description?.toLowerCase().includes(query);
+      if (!matchTitle && !matchDesc) return false;
+    }
+
+    // 2. Category
+    if (widgetCategory && String(event.category_id) !== String(widgetCategory)) {
+      return false;
+    }
+
+    // 3. Format (online / in-person)
+    if (widgetFormat && widgetFormat !== 'all') {
+      const hasOnlineDate = event.dates?.some(d => {
+        const loc = d.location?.toLowerCase() || '';
+        return loc.includes('virtual') || loc.includes('online') || loc.includes('teams') || loc.includes('zoom') || loc.includes('webinar');
+      });
+      if (widgetFormat === 'online' && !hasOnlineDate) return false;
+      if (widgetFormat === 'in-person' && hasOnlineDate) return false;
+    }
+
+    // 4. Date Range
+    if (widgetDateFrom || widgetDateTo) {
+      const hasDateInRange = event.dates?.some(d => {
+        const dTime = new Date(d.start_datetime).getTime();
+        if (widgetDateFrom && dTime < new Date(widgetDateFrom).getTime()) return false;
+        if (widgetDateTo && dTime > new Date(widgetDateTo + 'T23:59:59').getTime()) return false;
+        return true;
+      });
+      if (!hasDateInRange) return false;
+    }
+
+    return true;
+  });
+
+  if (isEmbed) {
+    return (
+      <div className="embed-widget-container" ref={widgetContainerRef}>
+        {/* Widget Header with logo */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid hsl(var(--border-glass))', paddingBottom: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg viewBox="0 0 100 100" width="24" height="24" fill="currentColor" style={{ color: 'hsl(var(--primary))' }}>
+              <circle cx="15" cy="50" r="8" />
+              <circle cx="35" cy="30" r="8" />
+              <circle cx="35" cy="70" r="8" />
+              <rect x="47" y="22" width="16" height="36" rx="8" />
+              <rect x="47" y="42" width="16" height="36" rx="8" />
+              <rect x="67" y="32" width="16" height="36" rx="8" />
+              <circle cx="91" cy="50" r="8" />
+            </svg>
+            <span style={{ fontSize: '18px', fontWeight: '900', letterSpacing: '0.02em', color: '#fff', fontFamily: 'var(--font-sans)' }}>REC Events Calendar</span>
+          </div>
+          <span style={{ fontSize: '12px', color: 'hsl(var(--text-secondary))' }}>Official Member Portal</span>
+        </div>
+
+        {/* Filter bar */}
+        <div className="widget-filter-bar">
+          <div className="widget-filter-item widget-filter-item-search">
+            <label className="form-label" style={{ fontSize: '11px' }}>Search Events</label>
+            <input 
+              type="text" 
+              className="form-input" 
+              placeholder="Search by keywords..." 
+              value={widgetSearch} 
+              onChange={(e) => setWidgetSearch(e.target.value)} 
+              style={{ padding: '8px 12px', fontSize: '13px' }}
+            />
+          </div>
+          <div className="widget-filter-item">
+            <label className="form-label" style={{ fontSize: '11px' }}>Category</label>
+            <select 
+              className="form-input" 
+              value={widgetCategory} 
+              onChange={(e) => setWidgetCategory(e.target.value)}
+              style={{ padding: '8px 12px', fontSize: '13px' }}
+            >
+              <option value="">All Categories</option>
+              <option value="1">Conference</option>
+              <option value="2">Webinar</option>
+              <option value="3">Legal Helpline Q&A</option>
+              <option value="4">CPD Workshop</option>
+              <option value="5">Qualification</option>
+            </select>
+          </div>
+          <div className="widget-filter-item">
+            <label className="form-label" style={{ fontSize: '11px' }}>Format</label>
+            <select 
+              className="form-input" 
+              value={widgetFormat} 
+              onChange={(e) => setWidgetFormat(e.target.value)}
+              style={{ padding: '8px 12px', fontSize: '13px' }}
+            >
+              <option value="all">All Formats</option>
+              <option value="online">Online / Virtual</option>
+              <option value="in-person">In-Person</option>
+            </select>
+          </div>
+          <div className="widget-filter-item">
+            <label className="form-label" style={{ fontSize: '11px' }}>From Date</label>
+            <input 
+              type="date" 
+              className="form-input" 
+              value={widgetDateFrom} 
+              onChange={(e) => setWidgetDateFrom(e.target.value)} 
+              style={{ padding: '8px 12px', fontSize: '13px' }}
+            />
+          </div>
+          <div className="widget-filter-item">
+            <label className="form-label" style={{ fontSize: '11px' }}>To Date</label>
+            <input 
+              type="date" 
+              className="form-input" 
+              value={widgetDateTo} 
+              onChange={(e) => setWidgetDateTo(e.target.value)} 
+              style={{ padding: '8px 12px', fontSize: '13px' }}
+            />
+          </div>
+        </div>
+
+        {/* Results grid */}
+        {filteredWidgetEvents.length === 0 ? (
+          <div className="glass-card" style={{ textAlign: 'center', padding: '40px' }}>
+            <p style={{ color: 'hsl(var(--text-secondary))' }}>No published future events match your filter criteria.</p>
+          </div>
+        ) : (
+          <div className="grid-3">
+            {filteredWidgetEvents.map(event => {
+              const firstDate = event.dates?.[0];
+              const formattedDate = firstDate ? new Date(firstDate.start_datetime).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+              return (
+                <div key={event.id} className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '16px' }}>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                    <span className="badge" style={{ backgroundColor: event.color_hex || 'hsl(var(--primary))', color: 'white' }}>
+                      {event.category_name}
+                    </span>
+                    <span className="badge badge-outline" style={{ color: 'hsl(var(--text-secondary))', fontSize: '10px' }}>
+                      {event.type}
+                    </span>
+                  </div>
+                  <h3 style={{ marginBottom: '8px', fontSize: '16px', lineHeight: '1.4' }}>{event.title}</h3>
+                  <p style={{ fontSize: '12px', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', marginBottom: '16px', flex: 1, color: 'hsl(var(--text-secondary))' }}>
+                    {event.description}
+                  </p>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid hsl(var(--border-glass))', paddingTop: '12px', marginTop: 'auto' }}>
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'hsl(var(--text-muted))', textTransform: 'uppercase' }}>Next Date</div>
+                      <div style={{ fontSize: '12px', fontWeight: '700' }}>{formattedDate || 'Multiple Sessions'}</div>
+                    </div>
+                    <button 
+                      className="btn btn-secondary" 
+                      style={{ padding: '6px 12px', fontSize: '12px' }}
+                      onClick={() => window.open(`${window.location.origin}?event_id=${event.id}`, '_blank')}
+                    >
+                      Book Event
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -1209,6 +1589,11 @@ export default function App() {
               <button className={`tab-btn ${adminTab === 'reports' ? 'active' : ''}`} onClick={() => { setAdminTab('reports'); fetchAdminReports(); }}>
                 Performance Analytics
               </button>
+              {adminRole !== 'viewer' && (
+                <button className={`tab-btn ${adminTab === 'widget' ? 'active' : ''}`} onClick={() => setAdminTab('widget')}>
+                  🔌 CS5 Website Embed
+                </button>
+              )}
             </div>
           </div>
 
@@ -1322,21 +1707,74 @@ export default function App() {
                 /* Event Creator Editor Form */
                 <form onSubmit={handleCreateEventSubmit} className="glass-card" style={{ maxWidth: '800px', margin: '0 auto' }}>
                   <h2 style={{ marginBottom: '24px' }}>Create and Publish Event</h2>
+
+                  {/* AI Quick Event Creator Prompt */}
+                  <div className="ai-prompt-box">
+                    <h4 style={{ marginBottom: '8px', color: 'hsl(var(--primary))', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      ✨ AI Quick Event Creator
+                    </h4>
+                    <p style={{ fontSize: '12px', color: 'hsl(var(--text-secondary))', marginBottom: '12px' }}>
+                      Type a natural language description of your event (including date, venue, capacity, and ticket prices) to auto-fill the configuration.
+                    </p>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <textarea
+                        className="ai-prompt-textarea"
+                        placeholder="e.g. Create a CPD workshop on Cyber Security on 2026-09-15 at 14:00 at REC London Office, capacity 80 delegates, member rate is £35 and non-member rate is £75."
+                        value={aiPromptText}
+                        onChange={(e) => setAiPromptText(e.target.value)}
+                        disabled={aiLoading}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ padding: '8px 16px', fontSize: '13px' }}
+                        onClick={handleAIPromptSubmit}
+                        disabled={aiLoading || !aiPromptText.trim()}
+                      >
+                        {aiLoading ? '✨ Processing...' : '✨ Generate Config'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {conflictWarning && (
+                    <div className="conflict-banner">
+                      <div className="conflict-banner-title">
+                        ⚠ Venue Booking Clash Detected
+                      </div>
+                      <div className="conflict-banner-desc">
+                        The venue "<strong>{creatorLocation}</strong>" is already booked for the event "<strong>{conflictWarning.title}</strong>" during this time window ({new Date(conflictWarning.start_datetime).toLocaleDateString()} {new Date(conflictWarning.start_datetime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {new Date(conflictWarning.end_datetime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}).
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                        <input
+                          type="checkbox"
+                          id="override-conflict-checkbox"
+                          checked={overrideConflict}
+                          onChange={(e) => setOverrideConflict(e.target.checked)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <label htmlFor="override-conflict-checkbox" style={{ fontSize: '12px', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}>
+                          Confirm override conflict and publish anyway
+                        </label>
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="form-group">
                     <label className="form-label">Event Title *</label>
-                    <input type="text" className="form-input" required value={creatorTitle} onChange={(e) => setCreatorTitle(e.target.value)} disabled={adminRole === 'readonly'} />
+                    <input type="text" className={`form-input ${aiHighlight ? 'ai-highlight-input' : ''}`} required value={creatorTitle} onChange={(e) => setCreatorTitle(e.target.value)} disabled={adminRole === 'readonly'} />
                   </div>
 
                   <div className="form-group">
                     <label className="form-label">Event Description</label>
-                    <textarea className="form-input" style={{ minHeight: '100px' }} value={creatorDesc} onChange={(e) => setCreatorDesc(e.target.value)} disabled={adminRole === 'readonly'} />
+                    <textarea className={`form-input ${aiHighlight ? 'ai-highlight-input' : ''}`} style={{ minHeight: '100px' }} value={creatorDesc} onChange={(e) => setCreatorDesc(e.target.value)} disabled={adminRole === 'readonly'} />
                   </div>
 
                   <div className="grid-2">
                     <div className="form-group">
                       <label className="form-label">Category *</label>
-                      <select className="form-input" value={creatorCategoryId} onChange={(e) => setCreatorCategoryId(e.target.value)} disabled={adminRole === 'readonly'}>
+                      <select className={`form-input ${aiHighlight ? 'ai-highlight-input' : ''}`} value={creatorCategoryId} onChange={(e) => setCreatorCategoryId(e.target.value)} disabled={adminRole === 'readonly'}>
                         <option value="1">Conference</option>
                         <option value="2">Webinar</option>
                         <option value="3">Legal Helpline Q&A</option>
@@ -1346,7 +1784,7 @@ export default function App() {
                     </div>
                     <div className="form-group">
                       <label className="form-label">Format Type *</label>
-                      <select className="form-input" value={creatorType} onChange={(e) => setCreatorType(e.target.value)} disabled={adminRole === 'readonly'}>
+                      <select className={`form-input ${aiHighlight ? 'ai-highlight-input' : ''}`} value={creatorType} onChange={(e) => setCreatorType(e.target.value)} disabled={adminRole === 'readonly'}>
                         <option value="standalone">Standalone (Single occurrence)</option>
                         <option value="umbrella">Umbrella (Series event)</option>
                       </select>
@@ -1356,50 +1794,106 @@ export default function App() {
                   <div className="grid-2">
                     <div className="form-group">
                       <label className="form-label">Start Date & Time *</label>
-                      <input type="datetime-local" className="form-input" required value={creatorStart} onChange={(e) => setCreatorStart(e.target.value)} disabled={adminRole === 'readonly'} />
+                      <input type="datetime-local" className={`form-input ${aiHighlight ? 'ai-highlight-input' : ''}`} required value={creatorStart} onChange={(e) => setCreatorStart(e.target.value)} disabled={adminRole === 'readonly'} />
                     </div>
                     <div className="form-group">
                       <label className="form-label">End Date & Time *</label>
-                      <input type="datetime-local" className="form-input" required value={creatorEnd} onChange={(e) => setCreatorEnd(e.target.value)} disabled={adminRole === 'readonly'} />
+                      <input type="datetime-local" className={`form-input ${aiHighlight ? 'ai-highlight-input' : ''}`} required value={creatorEnd} onChange={(e) => setCreatorEnd(e.target.value)} disabled={adminRole === 'readonly'} />
                     </div>
                   </div>
 
                   <div className="grid-2">
                     <div className="form-group">
                       <label className="form-label">Location / Link *</label>
-                      <input type="text" placeholder="e.g. Virtual (MS Teams) or Address" className="form-input" required value={creatorLocation} onChange={(e) => setCreatorLocation(e.target.value)} disabled={adminRole === 'readonly'} />
+                      <input type="text" placeholder="e.g. Virtual (MS Teams) or Address" className={`form-input ${aiHighlight ? 'ai-highlight-input' : ''}`} required value={creatorLocation} onChange={(e) => setCreatorLocation(e.target.value)} disabled={adminRole === 'readonly'} />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Default Capacity *</label>
-                      <input type="number" className="form-input" required value={creatorCapacity} onChange={(e) => setCreatorCapacity(e.target.value)} disabled={adminRole === 'readonly'} />
+                      <input type="number" className={`form-input ${aiHighlight ? 'ai-highlight-input' : ''}`} required value={creatorCapacity} onChange={(e) => setCreatorCapacity(e.target.value)} disabled={adminRole === 'readonly'} />
                     </div>
                   </div>
 
                   <div style={{ marginTop: '24px', borderTop: '1px solid hsl(var(--border-glass))', paddingTop: '24px' }}>
-                    <h4 style={{ marginBottom: '16px' }}>Pre-Configured Tickets (Template Defaults)</h4>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {creatorTickets.map((t, idx) => (
-                        <div key={idx} style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 16px', borderRadius: '8px', border: '1px solid hsl(var(--border-glass))', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <span style={{ fontWeight: 'bold' }}>{t.name}</span>
-                            {t.is_member_only === 1 && (
-                              <span style={{ fontSize: '10px', background: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', marginLeft: '8px' }}>Member Only</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                            <span>Price: <strong>{t.price_pence === 0 ? 'FREE' : `£${(t.price_pence / 100).toFixed(2)}`}</strong></span>
-                            <span>Capacity: <strong>{t.capacity}</strong></span>
-                          </div>
-                        </div>
-                      ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <h4 style={{ margin: 0 }}>Ticket Tiers & Pricing</h4>
+                      <button type="button" className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={handleAddTicket} disabled={adminRole === 'readonly'}>
+                        + Add Ticket Tier
+                      </button>
                     </div>
+
+                    {creatorTickets.length === 0 ? (
+                      <p style={{ fontSize: '13px', color: 'hsl(var(--text-secondary))' }}>No ticket tiers configured. Click "+ Add Ticket Tier" to define pricing rules.</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {creatorTickets.map((t, idx) => (
+                          <div key={idx} style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 16px', borderRadius: '12px', border: '1px solid hsl(var(--border-glass))', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                            <div style={{ flex: '2', minWidth: '150px' }}>
+                              <label style={{ fontSize: '10px', color: 'hsl(var(--text-secondary))', display: 'block', marginBottom: '4px' }}>Ticket Name</label>
+                              <input 
+                                type="text" 
+                                className="form-input" 
+                                style={{ padding: '6px 10px', fontSize: '13px' }}
+                                value={t.name} 
+                                onChange={(e) => handleTicketChange(idx, 'name', e.target.value)} 
+                                required
+                                disabled={adminRole === 'readonly'}
+                              />
+                            </div>
+                            <div style={{ flex: '1', minWidth: '80px' }}>
+                              <label style={{ fontSize: '10px', color: 'hsl(var(--text-secondary))', display: 'block', marginBottom: '4px' }}>Price (£)</label>
+                              <input 
+                                type="number" 
+                                step="0.01" 
+                                className="form-input" 
+                                style={{ padding: '6px 10px', fontSize: '13px' }}
+                                value={(t.price_pence / 100).toFixed(2)} 
+                                onChange={(e) => handleTicketChange(idx, 'price_pence', e.target.value ? Math.round(parseFloat(e.target.value) * 100) : 0)} 
+                                required
+                                disabled={adminRole === 'readonly'}
+                              />
+                            </div>
+                            <div style={{ flex: '1', minWidth: '80px' }}>
+                              <label style={{ fontSize: '10px', color: 'hsl(var(--text-secondary))', display: 'block', marginBottom: '4px' }}>Capacity</label>
+                              <input 
+                                type="number" 
+                                className="form-input" 
+                                style={{ padding: '6px 10px', fontSize: '13px' }}
+                                value={t.capacity} 
+                                onChange={(e) => handleTicketChange(idx, 'capacity', e.target.value)} 
+                                required
+                                disabled={adminRole === 'readonly'}
+                              />
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '120px', marginTop: '16px' }}>
+                              <input 
+                                type="checkbox" 
+                                id={`member-only-${idx}`}
+                                checked={t.is_member_only === 1} 
+                                onChange={(e) => handleTicketChange(idx, 'is_member_only', e.target.checked)}
+                                disabled={adminRole === 'readonly'}
+                              />
+                              <label htmlFor={`member-only-${idx}`} style={{ fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Member Only</label>
+                            </div>
+                            <div style={{ marginTop: '16px' }}>
+                              <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: '12px', color: 'hsl(var(--error))', borderColor: 'rgba(255, 89, 93, 0.2)' }} onClick={() => handleRemoveTicket(idx)} disabled={adminRole === 'readonly'}>
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
                     <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={adminRole === 'readonly'}>
                       Publish Live Event
                     </button>
-                    <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowEventCreator(false)}>
+                    <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => {
+                      setShowEventCreator(false);
+                      setConflictWarning(null);
+                      setOverrideConflict(false);
+                    }}>
                       Cancel
                     </button>
                   </div>
@@ -1508,6 +2002,67 @@ export default function App() {
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {adminTab === 'widget' && (
+            <div>
+              <h3 style={{ marginBottom: '16px' }}>CS5 Website Embed Integration</h3>
+              <p style={{ marginBottom: '24px', color: 'hsl(var(--text-secondary))' }}>
+                Copy the code below to embed the REC Events Calendar directly into the external CS5 public website. The integrated height auto-resize script will automatically adjust the iframe's height, eliminating scrollbars.
+              </p>
+
+              <div className="grid-2" style={{ gap: '24px', alignItems: 'start' }}>
+                {/* Embed Instructions & Code Snippet */}
+                <div className="glass-card">
+                  <h4 style={{ marginBottom: '12px' }}>How to Embed:</h4>
+                  <p style={{ fontSize: '13px', marginBottom: '16px' }}>1. Paste the HTML iframe code below where you want the calendar grid to display.</p>
+                  <p style={{ fontSize: '13px', marginBottom: '16px' }}>2. Include the script snippet below on your host page to automatically resize the iframe as the grid expands/collapses based on user filters.</p>
+                  
+                  <div style={{ marginTop: '24px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'hsl(var(--primary))' }}>Iframe HTML Code</span>
+                      <button 
+                        className="btn btn-secondary" 
+                        style={{ padding: '4px 8px', fontSize: '11px' }}
+                        onClick={() => {
+                          const embedCode = `<iframe src="${window.location.origin}/embed/calendar" width="100%" id="rec-calendar-iframe" style="border: none; overflow: hidden;"></iframe>\n<script>\n  window.addEventListener('message', function(e) {\n    if (e.data && e.data.type === 'resize') {\n      document.getElementById('rec-calendar-iframe').style.height = e.data.height + 'px';\n    }\n  });\n</script>`;
+                          navigator.clipboard.writeText(embedCode);
+                          alert('Embed snippet copied to clipboard!');
+                        }}
+                      >
+                        Copy Snippet
+                      </button>
+                    </div>
+                    <pre className="embed-code-block" style={{ fontSize: '11px' }}>
+{`<iframe src="${window.location.origin}/embed/calendar" width="100%" id="rec-calendar-iframe" style="border:none; overflow:hidden;"></iframe>
+<script>
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'resize') {
+      document.getElementById('rec-calendar-iframe').style.height = e.data.height + 'px';
+    }
+  });
+</script>`}
+                    </pre>
+                  </div>
+                </div>
+
+                {/* Live Sandbox Preview */}
+                <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h4 style={{ margin: 0 }}>Sandbox Live Preview</h4>
+                    <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc' }}>Interactive</span>
+                  </div>
+                  <div style={{ border: '1px solid hsl(var(--border-glass))', borderRadius: '12px', background: 'rgba(2, 6, 23, 0.5)', padding: '8px', overflow: 'hidden' }}>
+                    <iframe 
+                      src={`${window.location.origin}/embed/calendar`} 
+                      style={{ width: '100%', border: 'none', minHeight: '400px' }} 
+                      id="rec-calendar-preview-iframe"
+                      title="CS5 Calendar Widget Live Preview"
+                    />
                   </div>
                 </div>
               </div>
